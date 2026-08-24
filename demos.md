@@ -14,7 +14,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 | Cinqtris | `CT_ANI.png`, `CT_PRTS.png` | Automated + one button (About popup) | [docs/cinqtris.md](docs/cinqtris.md) | Not started |
 | CD Player | `CDPLAYER.png` | Automated, simulated audio | [docs/cd-player.md](docs/cd-player.md) | Not started |
 | Dooley | `DOOLEY1.png` | Automated | [docs/dooley.md](docs/dooley.md) | Not started |
-| LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Not started |
+| LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Built (`retrodemos/demos/led.py`) |
 | LED II | `LED-II-thumb.png` | Automated | [docs/led-ii.md](docs/led-ii.md) | Not started |
 | Title | `TITLE.png` | Automated | [docs/title.md](docs/title.md) | Not started |
 | Bruce's Windows | `WINDOW1.png` | Interactive (exception; reference UI chrome) | [docs/bruces-windows.md](docs/bruces-windows.md) | Not started |
