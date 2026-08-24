@@ -1,10 +1,7 @@
-"""Headless smoke tests for the shared framework.
-
-Proves the runtime can start and quit cleanly against a trivial Demo, with
-no real display (see conftest.py), before any actual demo exists. Once demos
-land (PLAN.md's build order), each gets its own one-line launch case here,
-using the same _CountingDemo pattern isn't needed; a real "does it draw
-without raising" case is enough per PLAN.md's "Testing" section.
+"""Headless smoke tests for the shared framework, plus one launch case per
+demo (PLAN.md's "Testing" section: launch it, run a few frames, assert
+nothing raises -- no _CountingDemo needed for those, just the real Demo).
+Demo-specific rendering/geometry tests live in their own tests/test_<demo>.py.
 """
 
 from __future__ import annotations
@@ -128,3 +125,10 @@ def test_cli_rejects_unknown_demo_name(capsys):
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Unknown demo" in captured.err
+
+
+def test_led_demo_runs_headlessly():
+    from retrodemos.demos.led import LedDemo
+
+    demo = LedDemo()
+    run(demo, scale=2, fps=1000, max_frames=5)

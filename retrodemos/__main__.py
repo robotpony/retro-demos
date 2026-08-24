@@ -22,9 +22,9 @@ def available_demos() -> list[str]:
     return sorted(name for _, name, _ in pkgutil.iter_modules(demos_package.__path__))
 
 
-def load_demo(name: str) -> Demo:
+def load_demo(name: str, *, text: str | None = None) -> Demo:
     module = importlib.import_module(f"retrodemos.demos.{name}")
-    return module.DEMO_CLASS()
+    return module.DEMO_CLASS(text=text)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,6 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scale", type=int, default=3, help="Integer scale factor (default: 3).")
     parser.add_argument("--fps", type=int, default=60, help="Frame rate cap (default: 60).")
     parser.add_argument("--fullscreen", action="store_true", help="Run fullscreen.")
+    parser.add_argument(
+        "--text", default=None, help="Override a demo's default text/message, for demos that use it."
+    )
     return parser
 
 
@@ -60,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pygame.init()
     try:
-        demo = load_demo(args.name)
+        demo = load_demo(args.name, text=args.text)
         run(demo, scale=args.scale, fps=args.fps, fullscreen=args.fullscreen)
     finally:
         pygame.quit()

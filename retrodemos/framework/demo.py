@@ -18,6 +18,10 @@ class Demo:
     Subclasses set NATIVE_SIZE and override update/draw (and handle_event,
     reset, if they need them). Everything here has a working default so a
     minimal demo needs only NATIVE_SIZE and draw.
+
+    __init__ must accept a keyword-only `text: str | None = None` (the
+    launcher's --text always passes it, even to demos that ignore it), plus
+    **kwargs for forward compatibility with future shared options.
     """
 
     #: Native pixel resolution, before the runtime scales it up for display.
