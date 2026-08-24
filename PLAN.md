@@ -89,7 +89,12 @@ These are handled once, in the launcher, not per demo. Two demos layer their own
 
 ### Scripted sequences
 
-A demo can be a single continuous behaviour, or a scripted sequence of stages that loops (LED's power-up -> numbers -> snake -> explosion -> words script is the first example). `framework/phase.py`'s `Phase` base class is the shared unit for the second kind: `update(dt) -> bool` returns True when a stage is finished, `draw(surface)` renders it, and the demo just holds a list of phases and an index, advancing and calling `reset()` on the next phase when the current one finishes. Reuse it for any other demo whose spec describes multiple stages rather than one continuous behaviour (Dooley, Bruce's 21, and Tank Status Window all look like candidates per their specs).
+A demo can be a single continuous behaviour, or a scripted sequence of stages that loops (LED's power-up -> numbers -> snake -> explosion -> words script is the first example). `framework/phase.py` has both halves of the shared unit for the second kind:
+
+- `Phase`: one stage. `update(dt) -> bool` returns True when the stage is finished, `draw(surface)` renders it, `reset()` sets it up to run (called once on construction, and again every time the sequence is about to run it).
+- `PhaseSequence`: the sequencer. Takes a list of `Phase`s, tracks the current index, and drives it: `update`/`draw` delegate to the current phase, and when a phase's `update` returns True, `PhaseSequence` advances to the next one (looping back to the first after the last) and calls its `reset()`.
+
+A scripted demo builds its phase list once, in its own `__init__`, wraps it in a `PhaseSequence`, and delegates its own `update`/`draw`/`reset` to that sequence — the demo class itself carries no phase-index bookkeeping (see `LedDemo` in `retrodemos/demos/led.py`). Reuse both classes as-is for any other demo whose spec describes multiple stages rather than one continuous behaviour (Dooley, Bruce's 21, and Tank Status Window all look like candidates per their specs); only the individual `Phase` subclasses -- the actual choreography -- are demo-specific.
 
 `framework/ticker.py`'s `Ticker` is a small companion: a fixed-interval tick accumulator (`advance(dt) -> int`, how many whole ticks fired) for any phase that advances in discrete steps rather than continuously, so each phase doesn't hand-roll its own dt-accumulation loop. It correctly catches up a slow frame instead of losing time; before it existed, LED's phases each wrote this by hand and did so inconsistently (see `retrodemos/demos/led_phases.py`'s history for the bug that motivated pulling it out).
 

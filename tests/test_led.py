@@ -88,13 +88,13 @@ def test_led_demo_native_size_matches_its_display():
 def test_led_demo_runs_through_every_phase_without_raising():
     demo = LedDemo()
     surface = pygame.Surface(demo.NATIVE_SIZE)
-    seen_phase_indices = {demo._phase_index}
+    seen_phase_indices = {demo._sequence.index}
     # enough ticks to cycle through all 5 phases at least once
     for _ in range(4000):
         demo.update(0.05)
         demo.draw(surface)
-        seen_phase_indices.add(demo._phase_index)
-    assert seen_phase_indices == set(range(len(demo._phases)))
+        seen_phase_indices.add(demo._sequence.index)
+    assert seen_phase_indices == set(range(len(demo._sequence.phases)))
 
 
 def test_led_demo_reset_returns_to_phase_zero():
@@ -102,7 +102,7 @@ def test_led_demo_reset_returns_to_phase_zero():
     for _ in range(50):
         demo.update(0.05)
     demo.reset()
-    assert demo._phase_index == 0
+    assert demo._sequence.index == 0
 
 
 def test_numbers_phase_text_override():

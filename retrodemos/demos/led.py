@@ -17,7 +17,7 @@ import pygame
 from retrodemos.demos.led_phases import ExplosionPhase, NumbersPhase, PowerUpPhase, SnakePhase, WordsPhase
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.led_grid import SevenSegmentDisplay
-from retrodemos.framework.phase import Phase
+from retrodemos.framework.phase import PhaseSequence
 
 DIGIT_COUNT = 11  # matches images/LED-thumb.png, which shows 11 digit cells
 
@@ -31,27 +31,22 @@ class LedDemo(Demo):
     def __init__(self, *, text: str | None = None, **_ignored) -> None:
         self.display = SevenSegmentDisplay(DIGIT_COUNT)
         self._rng = random.Random()
-        self._phases: list[Phase] = [
+        self._sequence = PhaseSequence([
             PowerUpPhase(self.display, self._rng),
             NumbersPhase(self.display, self._rng, text=text),
             SnakePhase(self.display, self._rng),
             ExplosionPhase(self.display, self._rng),
             WordsPhase(self.display, self._rng),
-        ]
-        self.reset()
+        ])
 
     def reset(self) -> None:
-        self._phase_index = 0
-        self._phases[0].reset()
+        self._sequence.reset()
 
     def update(self, dt: float) -> None:
-        phase = self._phases[self._phase_index]
-        if phase.update(dt):
-            self._phase_index = (self._phase_index + 1) % len(self._phases)
-            self._phases[self._phase_index].reset()
+        self._sequence.update(dt)
 
     def draw(self, surface: pygame.Surface) -> None:
-        self._phases[self._phase_index].draw(surface)
+        self._sequence.draw(surface)
 
 
 DEMO_CLASS = LedDemo
