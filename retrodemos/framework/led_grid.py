@@ -57,6 +57,45 @@ DIGIT_SEGMENTS = {
     " ": "", "-": "g",
 }
 
+# The 6 outer segments in ring order (clockwise around the hexagon,
+# excluding the middle crossbar g) -- used for the power-up "calibration"
+# sweep.
+RING_ORDER = ("a", "b", "c", "d", "e", "f")
+
+# Segments that share a physical corner within one digit cell, i.e. a snake
+# or explosion could plausibly hop between them. f/g/e meet at one corner,
+# b/g/c at the other, so each of those triples is fully connected rather
+# than just adjacent pairs.
+_INTRA_DIGIT_ADJACENCY = {
+    ("a", "f"), ("a", "b"),
+    ("f", "g"), ("f", "e"), ("g", "e"),
+    ("b", "g"), ("b", "c"), ("g", "c"),
+    ("e", "d"), ("c", "d"),
+}
+
+Node = tuple[int, str]  # (digit_index, segment_name)
+
+
+def segment_adjacency(digit_count: int) -> dict[Node, set[Node]]:
+    """Build the adjacency graph over every (digit_index, segment_name) node
+    in a display of `digit_count` cells: segments sharing a corner within one
+    cell, plus each cell's b/c (right side) to the next cell's f/e (left
+    side), since those sit side by side. Used for the snake and explosion
+    phases to find plausible paths/spread across the whole display."""
+    graph: dict[Node, set[Node]] = {}
+
+    def add_edge(u: Node, v: Node) -> None:
+        graph.setdefault(u, set()).add(v)
+        graph.setdefault(v, set()).add(u)
+
+    for i in range(digit_count):
+        for s1, s2 in _INTRA_DIGIT_ADJACENCY:
+            add_edge((i, s1), (i, s2))
+        if i + 1 < digit_count:
+            add_edge((i, "b"), (i + 1, "f"))
+            add_edge((i, "c"), (i + 1, "e"))
+    return graph
+
 
 class SevenSegmentDisplay:
     """A fixed-width row of seven-segment digit cells with a sunken bezel border."""
@@ -80,11 +119,27 @@ class SevenSegmentDisplay:
         right-padded with spaces (blank digits). Characters outside
         DIGIT_SEGMENTS render as a blank digit."""
         text = text[: self.digit_count].ljust(self.digit_count)
+        lit_segments = {i: set(DIGIT_SEGMENTS.get(ch, "")) for i, ch in enumerate(text)}
+        self.render_raw(surface, lit_segments)
+
+    def render_raw(
+        self,
+        surface: pygame.Surface,
+        lit_segments: dict[int, set[str]] | None = None,
+        lit_dots: set[int] | None = None,
+    ) -> None:
+        """Draw directly from a per-digit set of lit segment names (e.g.
+        {2: {"a", "g"}} lights just those two segments on digit index 2),
+        for choreography that isn't a fixed character -- the power-up,
+        snake, and explosion phases all draw this way. Digits/dots not
+        mentioned render fully unlit (dim ghost)."""
+        lit_segments = lit_segments or {}
+        lit_dots = lit_dots or set()
         surface.fill(BG)
         self._draw_bezel(surface)
-        for i, ch in enumerate(text):
+        for i in range(self.digit_count):
             origin_x = self.border + self.margin + i * CELL_W
-            self._draw_digit(surface, origin_x, ch)
+            self._draw_digit(surface, origin_x, lit_segments.get(i, set()), i in lit_dots)
 
     def _draw_bezel(self, surface: pygame.Surface) -> None:
         w, h = self.width, self.height
@@ -97,13 +152,15 @@ class SevenSegmentDisplay:
         surface.set_at((0, 0), BEZEL_CORNER)
         surface.set_at((w - 1, h - 1), BEZEL_CORNER)
 
-    def _draw_digit(self, surface: pygame.Surface, origin_x: int, char: str) -> None:
-        lit_segment_names = DIGIT_SEGMENTS.get(char, "")
+    def _draw_digit(
+        self, surface: pygame.Surface, origin_x: int, lit_segment_names: set[str], dot_lit: bool
+    ) -> None:
         lit_pixels: set[tuple[int, int]] = (
             set().union(*(SEGMENTS[s] for s in lit_segment_names)) if lit_segment_names else set()
         )
         for (x, y) in ALL_SEGMENT_PIXELS:
             color = LIT if (x, y) in lit_pixels else UNLIT
             surface.set_at((origin_x + x, self.border + y), color)
+        dot_color = LIT if dot_lit else UNLIT
         for (dx, dy) in DOT_PIXELS:
-            surface.set_at((origin_x + dx, self.border + dy), UNLIT)
+            surface.set_at((origin_x + dx, self.border + dy), dot_color)
