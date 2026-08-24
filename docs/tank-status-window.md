@@ -22,5 +22,4 @@ No existing sprite sheet; the dot-matrix rendering is custom-drawn.
 ## Open questions
 
 - **Simulation fidelity.** Whether "plays itself" needs real game logic (collision, scoring, AI movement) or a scripted/looping animation that just reads as gameplay isn't decided. Treat as scripted/looping unless told otherwise, since it's cheaper and the dot-matrix rendering hides the difference.
-- The exact bottom-button icon set isn't defined; none are visible in the source image. Treat as a small fixed row of generic monochrome icons unless told otherwise.
-- "Monochrome emoji" placeholders likely means a small bitmap/glyph sprite set rather than literal Unicode emoji characters (pygame has no built-in colour emoji rendering); confirm before building the shared button framework so it isn't built twice.
+- The bottom-row buttons use a custom monochrome pixel icon set (hand-drawn, not Unicode emoji), confirmed. The specific icons and their count are deferred until this demo is built (build order 9 in `PLAN.md`).

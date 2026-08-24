@@ -18,7 +18,7 @@ Renders the window and dialog on load. No auto-looping animation.
 
 ## Assets
 
-Custom-drawn chrome to match `WINDOW1.png`. May double as the reference implementation for the shared UI framework (README priority 2), though that work is tracked separately.
+Custom-drawn chrome to match `WINDOW1.png`. Per `PLAN.md`, this chrome is not extracted into the shared framework; CD Player and Tank Status Window draw their own window-style borders independently.
 
 ## Open questions
 

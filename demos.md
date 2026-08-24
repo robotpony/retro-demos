@@ -4,6 +4,8 @@ Tracking list for the pygame recreations described in `README.md`. One row per d
 
 Two images informed the grouping decisions below, resolved with Bruce on 2026-08-24: `CARDS.png` + `BACKS.png` are one demo, `CT_ANI.png` + `CT_PRTS.png` are one demo, `WINDOW1.png` and `WIN1.png` are separate demos, and `warped-retro-the-next-thumb.png` is excluded as the blog post's own thumbnail rather than a screenshot of an original program.
 
+The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base, runtime, CLI) is built and tested; no individual demo below has started yet. See `CLAUDE.md` for commands and `PLAN.md` for the architecture.
+
 ## Demos
 
 | Demo | Source image(s) | Mode | Spec | Build |
@@ -26,12 +28,11 @@ Two images informed the grouping decisions below, resolved with Bruce on 2026-08
 
 ## Project-wide decisions
 
-- All demos are automated attract-mode, except **Bruce's Windows**, which is functionally interactive and may double as the reference for the shared UI framework (README priority 2, not yet designed).
+- All demos are automated attract-mode, except **Bruce's Windows**, which is functionally interactive. Its chrome is not shared with other demos; see `PLAN.md`.
 - **Cinqtris** is the one automated demo with a single interactive control: its "MADMAX" cell is a button that opens an About popup.
+- README priority 2 (shared CLI and keybindings) is designed in `PLAN.md`: a single launcher (`python -m retrodemos <name>`) owns argument parsing, and Esc/Q, Space, and R are handled once for every demo.
+- The LED framework's scope (shared by Dooley, LED, LED II, and Title) is settled in `PLAN.md`: it owns both the grid renderer and the common scroll/cycle content helpers.
 
 ## Open questions
 
-Per-demo open questions now live in each spec file. Remaining cross-demo questions:
-
-- **LED framework scope.** Dooley, LED, LED II, and Title share a demo framework but each animates differently (colour-pixel column, digits, dot-matrix scroll, bit-pattern columns). What the shared module owns (e.g. LED-cell rendering, colour/on-off state) versus what's per-demo (the content driving those cells) isn't decided yet.
-- **Shared CLI/keybinding framework.** README priority 2. Most specs above reference "shared quit/pause controls" without those controls being defined yet (Cinqtris and Bruce's Windows are the exceptions, per their own Interaction sections).
+Per-demo open questions now live in each spec file. `docs/tank-status-window.md` still has one open: its button icon set will be a custom monochrome pixel set, but the specific icons are deferred until that demo is built (build order 9 in `PLAN.md`).

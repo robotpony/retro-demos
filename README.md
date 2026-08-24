@@ -2,14 +2,49 @@
 
 These are some demos based on programs I wrote in the early 1990s for the Atari ST and early Windows machines.
 
-Each image has one demo app that shows how each design works, though a few closely related images (e.g. a title screen and its asset sheet) share a single demo; see `demos.md` for the groupings. The demos are written in pygame, each with the same command line interface and in-demo interface.
+Each image in `images/` is a screenshot of one original program. Most map to their own demo app; a few closely related images (e.g. a title screen and its asset sheet) share a single demo. See `demos.md` for the full list and groupings. The demos are written in pygame-ce, and all of them share one command-line interface and one set of in-demo keybindings.
 
-## Priorities
+## Setup
 
-1. Analyze each image, grouping related images into one demo where appropriate, and write a mini-spec per demo (named by the demo, as .md files, in the docs/ folder)
-2. The interface design (command line, key commands in the demo, shared framework).
-3. Iterate on each demo and polish (timebox to 1 day per demo)
-4. Polish the demos (timebox to +1 day per demo as well)
-5. Add an index.html that highlights the demos, similar to ~/projects/peep --preview's format.
-6. Document and post to github.
-7. Write a post, nostalgia overload.
+Requires Python 3 and pygame-ce.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+## Running a demo
+
+```bash
+# List available demos
+.venv/bin/python -m retrodemos --list
+
+# Run one
+.venv/bin/python -m retrodemos <name>
+```
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--scale N` | 3 | Integer scale factor from native pixel resolution to window size |
+| `--fps N` | 60 | Frame rate cap |
+| `--fullscreen` | off | Run fullscreen |
+
+## Controls
+
+Every demo shares these keybindings:
+
+| Key | Action |
+|---|---|
+| Esc / Q | Quit |
+| Space | Pause / resume |
+| R | Restart |
+
+Two demos add their own controls on top: Bruce's Windows (drag the title bar, click "Got it" to close the dialog) and Cinqtris (the "MADMAX" cell is a button that opens an About popup). See each demo's spec in `docs/` for details.
+
+## Project docs
+
+- `PLAN.md`: architecture, shared framework design, and build order.
+- `demos.md`: per-demo spec and build status.
+- `docs/`: one mini-spec per demo.
