@@ -1,22 +1,22 @@
 # Demos
 
-Tracking list for the pygame recreations described in `README.md`. One row per demo. Update the Spec and Build columns as work progresses; each Spec file lives at `docs/<name>.md` once written (per README priority 1, none exist yet).
+Tracking list for the pygame recreations described in `README.md`. One row per demo. Update the Build column as work progresses. Each Spec file lives at `docs/<name>.md`, where `<name>` is a kebab-case slug of the Demo column (e.g. `docs/tank-status-window.md`), not the source image name, since grouped demos cover more than one image. All nine specs are written (README priority 1 is done).
 
 Two images informed the grouping decisions below, resolved with Bruce on 2026-08-24: `CARDS.png` + `BACKS.png` are one demo, `CT_ANI.png` + `CT_PRTS.png` are one demo, `WINDOW1.png` and `WIN1.png` are separate demos, and `warped-retro-the-next-thumb.png` is excluded as the blog post's own thumbnail rather than a screenshot of an original program.
 
 ## Demos
 
-| Demo | Source image(s) | What it shows | Spec | Build |
+| Demo | Source image(s) | Mode | Spec | Build |
 |---|---|---|---|---|
-| Bruce's 21 | `CARDS.png`, `BACKS.png` | Full A-K playing card deck (4 suits) plus two card-back designs labelled "Bruce's 21". Likely a blackjack-family card game. | Not written | Not started |
-| Cinqtris | `CT_ANI.png`, `CT_PRTS.png` | Tetris-style game titled "CINQTRIS". `CT_ANI` is the title/score screen (vertical red/green level bars, "MAX" readout); `CT_PRTS` is the asset sheet (gem/tile colour palette, bitmap font, button-state sprites). | Not written | Not started |
-| CD Player | `CDPLAYER.png` | CD player interface: numeric LED track/time readout, transport buttons (play/pause/stop/skip), and a bank of vertical sliders (likely an equalizer). | Not written | Not started |
-| Dooley | `DOOLEY1.png` | LED-style display with colour pixels down the left edge. Shares the LED demo framework (see LED, LED II, and Title below); its own colour-pixel column is what distinguishes it. | Not written | Not started |
-| LED | `LED-thumb.png` | Seven-segment digit display, single row (like a digital clock or counter readout). Built on the shared LED demo framework; animates text/digits in the style specific to this display type. | Not written | Not started |
-| LED II | `LED-II-thumb.png` | Dot-matrix LED display, rows of red dots (likely a scrolling text/marquee display). Built on the shared LED demo framework; animates in the style specific to this display type. | Not written | Not started |
-| Title | `TITLE.png` | LED bit-pattern demo. Per Bruce: the two pattern sets at the bottom are read column by column, left to right, each column a set of bits representing a vertical line with values 0-255. Built on the shared LED demo framework; animates in the style specific to this display type. | Not written | Not started |
-| Bruce's Windows | `WINDOW1.png` | Windows 3.1-style chrome: title bar, a "Welcome to Bruce's Windows" dialog with a "Got it" button, and a status bar. Candidate reference for the shared in-demo UI framework mentioned in the README, but tracked as its own demo per Bruce's answer. | Not written | Not started |
-| Tank Status Window | `WIN1.png` | A window titled "Tank Status Window" containing a large red/black dot-matrix grid and a row of icon buttons along the bottom. Shows an automated, single-player COMBAT (Atari 2600 style) game running in the grid; the bottom row uses placeholder monochrome emoji as stand-ins for the demo's control buttons. | Not written | Not started |
+| Bruce's 21 | `CARDS.png`, `BACKS.png` | Automated | [docs/bruces-21.md](docs/bruces-21.md) | Not started |
+| Cinqtris | `CT_ANI.png`, `CT_PRTS.png` | Automated + one button (About popup) | [docs/cinqtris.md](docs/cinqtris.md) | Not started |
+| CD Player | `CDPLAYER.png` | Automated, simulated audio | [docs/cd-player.md](docs/cd-player.md) | Not started |
+| Dooley | `DOOLEY1.png` | Automated | [docs/dooley.md](docs/dooley.md) | Not started |
+| LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Not started |
+| LED II | `LED-II-thumb.png` | Automated | [docs/led-ii.md](docs/led-ii.md) | Not started |
+| Title | `TITLE.png` | Automated | [docs/title.md](docs/title.md) | Not started |
+| Bruce's Windows | `WINDOW1.png` | Interactive (exception; reference UI chrome) | [docs/bruces-windows.md](docs/bruces-windows.md) | Not started |
+| Tank Status Window | `WIN1.png` | Automated | [docs/tank-status-window.md](docs/tank-status-window.md) | Not started |
 
 ## Excluded
 
@@ -24,8 +24,14 @@ Two images informed the grouping decisions below, resolved with Bruce on 2026-08
 |---|---|
 | `warped-retro-the-next-thumb.png` | Blog post thumbnail ("Warped Visions" logo over a forest background), not a screenshot of an original 1990s program. |
 
+## Project-wide decisions
+
+- All demos are automated attract-mode, except **Bruce's Windows**, which is functionally interactive and may double as the reference for the shared UI framework (README priority 2, not yet designed).
+- **Cinqtris** is the one automated demo with a single interactive control: its "MADMAX" cell is a button that opens an About popup.
+
 ## Open questions
 
-- **Tank simulation fidelity.** For Tank Status Window, confirm whether the automated COMBAT-style demo needs real game logic (collision, scoring, AI movement) or a scripted/looping animation that just reads as gameplay.
-- **Emoji button rendering.** Pygame has no built-in colour emoji rendering. "Monochrome emoji" placeholder buttons likely means a small bitmap/glyph sprite set rather than literal Unicode emoji characters; confirm before building the shared button framework so it isn't built twice.
-- **LED framework scope.** Dooley, LED, LED II, and Title share a demo framework but each animates differently. Confirm what the shared module actually owns (e.g. LED-cell rendering, colour/on-off state) versus what's per-demo (the animation/content driving those cells), so `docs/` specs for the four don't duplicate the framework description.
+Per-demo open questions now live in each spec file. Remaining cross-demo questions:
+
+- **LED framework scope.** Dooley, LED, LED II, and Title share a demo framework but each animates differently (colour-pixel column, digits, dot-matrix scroll, bit-pattern columns). What the shared module owns (e.g. LED-cell rendering, colour/on-off state) versus what's per-demo (the content driving those cells) isn't decided yet.
+- **Shared CLI/keybinding framework.** README priority 2. Most specs above reference "shared quit/pause controls" without those controls being defined yet (Cinqtris and Bruce's Windows are the exceptions, per their own Interaction sections).
