@@ -19,7 +19,16 @@ from retrodemos.framework.runtime import run
 
 
 def available_demos() -> list[str]:
-    return sorted(name for _, name, _ in pkgutil.iter_modules(demos_package.__path__))
+    """Every module in retrodemos/demos/ that actually exposes a
+    module-level DEMO_CLASS -- a helper module a demo depends on (e.g.
+    led_phases.py, led_ii_phases.py) lives in the same package but isn't
+    itself runnable, so it's excluded rather than listed as if it were."""
+    names = []
+    for _, name, _ in pkgutil.iter_modules(demos_package.__path__):
+        module = importlib.import_module(f"retrodemos.demos.{name}")
+        if hasattr(module, "DEMO_CLASS"):
+            names.append(name)
+    return sorted(names)
 
 
 def load_demo(name: str, *, text: str | None = None) -> Demo:

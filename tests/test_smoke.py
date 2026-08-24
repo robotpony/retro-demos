@@ -118,6 +118,19 @@ def test_cli_lists_demos_when_none_given(capsys):
     assert "No demos yet" in captured.out or "Available demos" in captured.out
 
 
+def test_cli_list_excludes_helper_modules_without_a_demo_class():
+    # led_phases.py and led_ii_phases.py live in retrodemos/demos/ (each
+    # demo's own choreography module) but expose no DEMO_CLASS, so they
+    # aren't runnable demos and shouldn't be listed as if they were.
+    from retrodemos.__main__ import available_demos
+
+    demos = available_demos()
+    assert "led" in demos
+    assert "led_ii" in demos
+    assert "led_phases" not in demos
+    assert "led_ii_phases" not in demos
+
+
 def test_cli_rejects_unknown_demo_name(capsys):
     from retrodemos.__main__ import main
 
@@ -131,4 +144,11 @@ def test_led_demo_runs_headlessly():
     from retrodemos.demos.led import LedDemo
 
     demo = LedDemo()
+    run(demo, scale=2, fps=1000, max_frames=5)
+
+
+def test_led_ii_demo_runs_headlessly():
+    from retrodemos.demos.led_ii import LedIIDemo
+
+    demo = LedIIDemo()
     run(demo, scale=2, fps=1000, max_frames=5)

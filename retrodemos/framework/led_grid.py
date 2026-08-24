@@ -1,18 +1,23 @@
-"""Seven-segment digit rendering, shared by the LED-family demos (LED, LED
-II, Title, Dooley -- see PLAN.md's "LED grid module" section).
+"""Cell-grid rendering shared by the LED-family demos (LED, LED II, Title,
+Dooley -- see PLAN.md's "LED grid module" section): the seven-segment digit
+renderer (`SevenSegmentDisplay`, LED's) and the dot-matrix renderer
+(`DotMatrixDisplay`, LED II's).
 
-Segment geometry and colours were reverse-engineered pixel-by-pixel from
-images/LED-thumb.png and worked out interactively with Bruce: the segment
-shapes and bezel border are matched exactly against the source (verified by
-reconstructing LED-thumb.png byte-for-byte from this geometry); the lit
-colour was brightened past the source on request, and the unlit "ghost"
-colour has no source ground truth at all (the source only ever shows a
-fully-lit "8"), so it's invented at the same proportion below full
-brightness the source's single red used relative to white.
+Both renderers' geometry and colours were reverse-engineered pixel-by-pixel
+from their source screenshots (`images/LED-thumb.png`,
+`images/LED-II-thumb.png` -- see `docs/pixel-archaeology.md` for method):
+shapes and bezel borders are matched exactly against the source (verified by
+reconstructing each source image byte-for-byte from this geometry). Both
+source images show their display fully lit (LED-thumb.png a lit "8",
+LED-II-thumb.png every dot lit) with no unlit/ghost colour or letterform
+ground truth, so those are invented, not measured -- see each renderer's own
+docstring for what was invented and why.
 
-This module currently implements only the seven-segment digit renderer --
-what the LED demo needs. The dot-matrix grid needed by LED II, Title, and
-Dooley isn't built yet; it lands with those demos, per PLAN.md's build order.
+Title and Dooley's dot-matrix needs aren't built yet; extend
+`DotMatrixDisplay` when building those rather than forking a parallel
+renderer, per PLAN.md -- but note its bezel geometry (and, later, Dooley's
+per-cell colour need) is concrete to LED II's own source image, not
+speculatively parameterized for demos that don't exist yet.
 """
 
 from __future__ import annotations
@@ -25,6 +30,30 @@ BG = (0, 0, 0)
 BEZEL_DARK = (128, 128, 128)
 BEZEL_LIGHT = (255, 255, 255)
 BEZEL_CORNER = (192, 192, 192)
+
+# LED II's dot colour, unlike LED's LIT above, is left at the value actually
+# measured in LED-II-thumb.png (191, 0, 0) rather than brightened -- LED's
+# brightening was a specific request from Bruce for that demo, not an
+# established house style, so the default here is the faithful one unless
+# told otherwise. DOT_UNLIT has no source ground truth (see module
+# docstring) and reuses the same 64/255 dimness-below-full-brightness ratio
+# LED's own invented UNLIT used, applied to DOT_LIT instead of LIT.
+DOT_LIT = (191, 0, 0)
+DOT_UNLIT = (48, 0, 0)
+
+
+def lerp_color(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    """Blend from colour `a` (t=0) to `b` (t=1), clamped to that range.
+    Shared brightness primitive for any grid cell that needs to vary
+    intensity rather than just switch on/off -- DotMatrixDisplay.render_raw
+    is the first user (LED II's RipplePhase fireworks)."""
+    t = max(0.0, min(1.0, t))
+    return (
+        round(a[0] + (b[0] - a[0]) * t),
+        round(a[1] + (b[1] - a[1]) * t),
+        round(a[2] + (b[2] - a[2]) * t),
+    )
+
 
 # One digit cell is 17px wide (its own horizontal pitch) and 25px tall.
 # Segment pixel sets are local to a cell: x=0 is the leftmost column (f/e's
@@ -164,3 +193,191 @@ class SevenSegmentDisplay:
         dot_color = LIT if dot_lit else UNLIT
         for (dx, dy) in DOT_PIXELS:
             surface.set_at((origin_x + dx, self.border + dy), dot_color)
+
+
+def scroll_window(loop_text: str, offset: int, width: int) -> str:
+    """Return the `width`-character slice of `loop_text` visible at
+    `offset`, wrapping around the end back to the start.
+
+    `loop_text` should already carry any trailing padding needed to put a
+    visible gap between repeats (e.g. `text + " " * width`) -- this
+    function only handles the windowing, not the gap. Shared by any
+    scrolling-content phase across the LED-family demos; LED's own
+    `NumbersPhase` (`led_phases.py`) was the first user, before this was
+    pulled out here as a second one (LED II) needed the identical logic.
+    """
+    if not loop_text:
+        return " " * width
+    offset %= len(loop_text)
+    return (loop_text[offset:] + loop_text)[:width]
+
+
+# Each glyph is 5 columns x 7 rows, local coordinates (x=0..4, y=0..6).
+# Digits, space, and "-" only -- matching the seven-segment font's current
+# limitation above (see SevenSegmentDisplay's DIGIT_SEGMENTS): a full
+# alphabet isn't built, since nothing has needed one yet. There's no
+# source ground truth for these shapes (LED-II-thumb.png shows only a
+# fully-lit calibration block, see module docstring), so they're an
+# original 5x7 dot-matrix font design in the well-worn LED-sign style, not
+# a reverse-engineered one -- reviewed visually, not diffed against a
+# source.
+_DOT_GLYPH_ROWS: dict[str, tuple[str, ...]] = {
+    "0": (".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."),
+    "1": ("..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."),
+    "2": (".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"),
+    "3": (".###.", "#...#", "....#", "..##.", "....#", "#...#", ".###."),
+    "4": ("...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."),
+    "5": ("#####", "#....", "####.", "....#", "....#", "#...#", ".###."),
+    "6": ("..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."),
+    "7": ("#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."),
+    "8": (".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."),
+    "9": (".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."),
+    "-": (".....", ".....", ".....", "#####", ".....", ".....", "....."),
+    " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
+}
+GLYPH_W = 5
+GLYPH_H = 7
+GLYPH_GAP = 1  # blank column between characters
+
+DOT_FONT: dict[str, set[tuple[int, int]]] = {
+    ch: {(x, y) for y, row in enumerate(rows) for x, pixel in enumerate(row) if pixel == "#"}
+    for ch, rows in _DOT_GLYPH_ROWS.items()
+}
+
+DotNode = tuple[int, int]  # (col, row)
+
+
+def dot_grid_adjacency(cols: int, rows: int) -> dict[DotNode, set[DotNode]]:
+    """Build the 4-neighbour adjacency graph over every (col, row) dot in a
+    `cols` x `rows` DotMatrixDisplay grid -- the dot-grid analogue of
+    segment_adjacency above. Used with framework/graph_walk.py the same way
+    segment_adjacency is: a Snake or bfs_rings walks this graph to find
+    plausible paths/spread across the display."""
+    graph: dict[DotNode, set[DotNode]] = {}
+    for row in range(rows):
+        for col in range(cols):
+            neighbours: set[DotNode] = set()
+            if col > 0:
+                neighbours.add((col - 1, row))
+            if col < cols - 1:
+                neighbours.add((col + 1, row))
+            if row > 0:
+                neighbours.add((col, row - 1))
+            if row < rows - 1:
+                neighbours.add((col, row + 1))
+            graph[(col, row)] = neighbours
+    return graph
+
+
+class DotMatrixDisplay:
+    """A fixed-width row of round dot cells with a sunken bezel border,
+    LED II's marquee display.
+
+    Geometry (each dot a 2x2px square on a 3px pitch, i.e. a 1px gap
+    between dots) and colours were reverse-engineered from
+    images/LED-II-thumb.png. The bezel is its own shape, not shared with
+    SevenSegmentDisplay's: a 1px corner-grey outer frame plus a 1px
+    light/dark inner bevel edge on the left/right sides only (full height),
+    versus a 1px dark/light bevel top/bottom -- an asymmetric border,
+    verified by reconstructing LED-II-thumb.png byte-for-byte from this
+    geometry, not "fixed" to be symmetric (see docs/pixel-archaeology.md's
+    note on not smoothing over a source's genuine quirks).
+    """
+
+    ROWS = 9
+    DOT_SIZE = 2
+    PITCH = 3  # DOT_SIZE + 1px gap
+
+    def __init__(self, cols: int, *, margin: int = 2, h_border: int = 2, v_border: int = 1) -> None:
+        self.cols = cols
+        self.margin = margin
+        self.h_border = h_border
+        self.v_border = v_border
+        self.char_count = (cols + GLYPH_GAP) // (GLYPH_W + GLYPH_GAP)
+        # -1: the last dot in a row/column doesn't need a trailing gap pixel.
+        self.width = h_border * 2 + margin * 2 + cols * self.PITCH - 1
+        self.height = v_border * 2 + margin * 2 + self.ROWS * self.PITCH - 1
+
+    def render(self, surface: pygame.Surface, text: str) -> None:
+        """Draw `text` onto surface, which must be exactly (self.width,
+        self.height). Extra characters are dropped; short text is
+        right-padded with spaces. Characters outside DOT_FONT render as a
+        blank cell (see DOT_FONT's limitation)."""
+        text = text[: self.char_count].ljust(self.char_count)
+        lit_cells, _ = self.text_dots(text)
+        self.render_raw(surface, lit_cells)
+
+    def text_dots(self, text: str) -> tuple[set[tuple[int, int]], int]:
+        """Lay out `text` at its natural width -- unclipped and unpadded,
+        unlike render()/render_raw(), which are always exactly self.cols
+        wide. Returns the lit dot-cells (row-centred within self.ROWS the
+        same way render() is) plus the text's total dot-column width.
+
+        This is the building block for a smoothly-scrolling marquee (see
+        led_ii_phases.py's MarqueePhase), which needs per-dot motion rather
+        than render()'s per-character one; render() itself is written in
+        terms of this method rather than duplicating the glyph layout."""
+        row_offset = (self.ROWS - GLYPH_H) // 2
+        dots: set[tuple[int, int]] = set()
+        for i, ch in enumerate(text):
+            glyph = DOT_FONT.get(ch, DOT_FONT[" "])
+            col_offset = i * (GLYPH_W + GLYPH_GAP)
+            for gx, gy in glyph:
+                dots.add((col_offset + gx, row_offset + gy))
+        # -1: the last character doesn't need a trailing gap column.
+        width = max(len(text) * (GLYPH_W + GLYPH_GAP) - GLYPH_GAP, 1)
+        return dots, width
+
+    def render_raw(
+        self,
+        surface: pygame.Surface,
+        lit_cells: set[tuple[int, int]] | dict[tuple[int, int], float] | None = None,
+    ) -> None:
+        """Draw directly from (col, row) dot-grid coordinates, for
+        choreography that isn't a fixed character -- e.g. a power-up sweep
+        or a graph-walk effect over the dot grid.
+
+        `lit_cells` is either a set (every named cell fully lit, DOT_LIT --
+        most callers) or a dict mapping cell to a 0..1 intensity, blended
+        between DOT_UNLIT and DOT_LIT via lerp_color, for effects that vary
+        brightness rather than just switching cells on/off (e.g. LED II's
+        RipplePhase fireworks). A cell absent from either form renders
+        fully unlit."""
+        if lit_cells is None:
+            intensity: dict[tuple[int, int], float] = {}
+        elif isinstance(lit_cells, dict):
+            intensity = lit_cells
+        else:
+            intensity = {cell: 1.0 for cell in lit_cells}
+        surface.fill(BG)
+        self._draw_bezel(surface)
+        origin_x = self.h_border + self.margin
+        origin_y = self.v_border + self.margin
+        for row in range(self.ROWS):
+            for col in range(self.cols):
+                color = lerp_color(DOT_UNLIT, DOT_LIT, intensity.get((col, row), 0.0))
+                x0 = origin_x + col * self.PITCH
+                y0 = origin_y + row * self.PITCH
+                for dx in range(self.DOT_SIZE):
+                    for dy in range(self.DOT_SIZE):
+                        surface.set_at((x0 + dx, y0 + dy), color)
+
+    def _draw_bezel(self, surface: pygame.Surface) -> None:
+        w, h = self.width, self.height
+        # Outer corner-grey frame (col 0 and col w-1) plus the inner
+        # light/dark bevel edge (col 1 and col w-2), all full height.
+        for y in range(h):
+            surface.set_at((0, y), BEZEL_CORNER)
+            surface.set_at((w - 1, y), BEZEL_CORNER)
+            surface.set_at((1, y), BEZEL_LIGHT)
+            surface.set_at((w - 2, y), BEZEL_DARK)
+        # Top/bottom bevel edges, for the columns the loop above doesn't
+        # already own.
+        for x in range(2, w - 2):
+            surface.set_at((x, 0), BEZEL_DARK)
+            surface.set_at((x, h - 1), BEZEL_LIGHT)
+        # The two diagonal chamfer pixels where the inner bevel column
+        # meets the opposite top/bottom edge -- present at the top-left and
+        # bottom-right only, an asymmetry the source itself has.
+        surface.set_at((1, 0), BEZEL_CORNER)
+        surface.set_at((w - 2, h - 1), BEZEL_CORNER)

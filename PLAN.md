@@ -155,14 +155,26 @@ Once the framework exists and these commands are real, `CLAUDE.md` should be upd
 - Shared window chrome beyond Bruce's Windows (see Window chrome above).
 - `index.html` preview page (README priority 5). Revisit once demos exist to screenshot; format should follow `~/projects/peep`'s `--preview` output.
 
+## Future framework polish
+
+Not scheduled against the build order; tracked here so they aren't lost, and so LED II/Title don't reinvent them narrowly for their own demo when the LED polish pass lands. All three surfaced from LED's own future-polish list (`docs/led.md`) on 2026-08-24.
+
+- **LED intensity, not just on/off.** Partly done (2026-08-24): `led_grid.py` has `lerp_color` and `DotMatrixDisplay.render_raw` now accepts either a plain set (fully lit, backward compatible) or a `dict[cell, float]` of per-cell brightness, blended between `DOT_UNLIT`/`DOT_LIT`. LED II's `RipplePhase` fireworks use it (via `graph_walk.Burst`'s per-node fade). Still open: `SevenSegmentDisplay` (LED's own renderer) has no equivalent yet -- LED's power-up flicker and `ExplosionPhase` still snap on/off -- and Title's dot-matrix needs, once built, should get the same treatment `DotMatrixDisplay` already has rather than reinventing it.
+- **Timing momentum (speed up, hold, ease down).** Phase timing right now is either a fixed interval or (LED's power-up sweep) a one-directional speed-up with no ease-out. A shared easing helper alongside `framework/ticker.py`'s `Ticker` would let any phase's pacing feel less mechanical without each phase hand-rolling its own curve.
+- **Rudimentary synthesized audio.** Short sine-tone beeps with simple envelopes, timed to animation beats (flicker, sweep, snake step, explosion). No audio exists anywhere in the framework yet. Note this is a distinct question from the "Out of scope" item above: that one rules out *real* audio playback for CD Player specifically (it doesn't actually play music to simulate a CD deck); a small synthesized-beep capability for sound effects is narrower and different, but is still a new project decision, not a foregone one -- confirm scope with Bruce before building rather than treating it as pre-approved.
+
 ## Open questions
 
 Tracked in `demos.md` and each demo's own doc, not duplicated here. One remains: Tank Status Window's button icons will be a custom monochrome pixel set (confirmed, not Unicode emoji), but the specific icons are deferred until its build slot (order 9).
 
 ## Status
 
-Framework scaffold is done: `retrodemos/framework/` (canvas, keys, `Demo` base, runtime), the `retrodemos/__main__.py` launcher, `requirements.txt`, and `tests/test_smoke.py` (10 headless tests, all passing). `framework/led_grid.py` is deliberately not built yet; it lands with the LED demo (build order 1), the first demo that needs it.
+Framework scaffold and build orders 1-2 (LED, LED II) are all done. `retrodemos/framework/` has canvas, keys, `Demo` base, runtime, `led_grid.py` (seven-segment renderer + dot-matrix renderer + both displays' adjacency-graph builders + `lerp_color` for brightness blending), `phase.py` (`Phase` + `PhaseSequence`), `ticker.py` (fixed-interval tick accumulator), and `graph_walk.py` (`Snake`, `bfs_rings`, and `Burst` -- generic graph-crawl/radiating-particle-burst primitives; `Snake`/`bfs_rings` were extracted once LED II's phases needed the identical logic LED's `SnakePhase`/`ExplosionPhase` already had over a different graph, `Burst` was built directly here for LED II's fireworks). LED (`led.py`/`led_phases.py`) and LED II (`led_ii.py`/`led_ii_phases.py`) each run a full 5-phase script on this shared machinery; LED II's snake and fireworks were retuned bigger/richer on request (2026-08-24) -- see its phases' docstrings for the specific before/after. `--list` also got fixed while LED II was built: it was listing every module in `demos/`, including helper modules with no `DEMO_CLASS` (a latent bug since LED's own `led_phases.py`, made visibly worse by LED II's second phases module), not just runnable demos. 83 tests passing (`tests/`).
+
+LED II's choreography (unlike LED's) has no source spec from Bruce; it's a deliberate structural echo of LED's script, confirmed with Bruce before building rather than assumed, with its own tuned constants for the much larger dot grid. `docs/led-ii.md` flags two of its content choices (the "1991" credit, the marquee default text) as reused from LED by assumption, not verified facts about LED II -- worth a look before considering LED II's polish pass done.
+
+`framework/led_grid.py` still only has the seven-segment and dot-matrix renderers; Title's bit-pattern-column content and Dooley's dot-matrix-plus-colour-side-column need aren't built yet -- extend `DotMatrixDisplay` for Title (same grid style), and note Dooley's per-cell colour need will likely require extending it further rather than reusing it as-is.
 
 ## Next step
 
-Build order 1: the LED demo. Write `retrodemos/framework/led_grid.py` (generic cell-grid renderer + scroll/cycle helpers) alongside it, per `docs/led.md`.
+Build order 3: Title. Same framework, generated content instead of text -- reuse `DotMatrixDisplay` (per PLAN.md's "LED grid module" section) for its bit-pattern-column display, per `docs/title.md`.
