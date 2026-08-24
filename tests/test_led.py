@@ -146,10 +146,10 @@ def test_snake_phase_grows_to_max_length_then_holds():
         if phase.update(0.05):
             finished = True
             break
-        max_len_seen = max(max_len_seen, len(phase._body))
+        max_len_seen = max(max_len_seen, len(phase._snake.body))
     assert finished
     assert max_len_seen == phase.MAX_LENGTH
-    assert len(phase._body) == phase.MAX_LENGTH
+    assert len(phase._snake.body) == phase.MAX_LENGTH
 
 
 def test_explosion_phase_repeats_and_finishes():

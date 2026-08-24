@@ -15,11 +15,11 @@ to retune without touching the choreography logic.
 from __future__ import annotations
 
 import random
-from collections import deque
 
 import pygame
 
-from retrodemos.framework.led_grid import DIGIT_SEGMENTS, RING_ORDER, segment_adjacency
+from retrodemos.framework.graph_walk import Snake, bfs_rings
+from retrodemos.framework.led_grid import DIGIT_SEGMENTS, RING_ORDER, scroll_window, segment_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
 
@@ -126,8 +126,7 @@ class NumbersPhase(Phase):
         return self._steps >= self._total_steps
 
     def draw(self, surface: pygame.Surface) -> None:
-        loop = self._loop_text
-        window = (loop[self._offset :] + loop)[: self.display.digit_count]
+        window = scroll_window(self._loop_text, self._offset, self.display.digit_count)
         self.display.render(surface, window)
 
 
@@ -141,30 +140,21 @@ class SnakePhase(Phase):
     STEPS = 60
 
     def reset(self) -> None:
-        self._graph = segment_adjacency(self.display.digit_count)
-        start = self.rng.choice(list(self._graph.keys()))
-        self._body: list[tuple[int, str]] = [start]
+        graph = segment_adjacency(self.display.digit_count)
+        start = self.rng.choice(list(graph.keys()))
+        self._snake = Snake(graph, start, self.MAX_LENGTH, self.rng)
         self._ticker = Ticker(self.STEP_INTERVAL)
         self._steps_taken = 0
 
     def update(self, dt: float) -> bool:
         for _ in range(self._ticker.advance(dt)):
-            self._advance()
+            self._snake.advance()
             self._steps_taken += 1
         return self._steps_taken >= self.STEPS
 
-    def _advance(self) -> None:
-        head = self._body[0]
-        neighbours = list(self._graph[head])
-        previous = self._body[1] if len(self._body) > 1 else None
-        candidates = [n for n in neighbours if n != previous] or neighbours
-        self._body.insert(0, self.rng.choice(candidates))
-        if len(self._body) > self.MAX_LENGTH:
-            self._body.pop()
-
     def draw(self, surface: pygame.Surface) -> None:
         lit: dict[int, set[str]] = {}
-        for digit_i, seg in self._body:
+        for digit_i, seg in self._snake.body:
             lit.setdefault(digit_i, set()).add(seg)
         self.display.render_raw(surface, lit)
 
@@ -187,29 +177,11 @@ class ExplosionPhase(Phase):
 
     def _start_new_burst(self) -> None:
         digit_i = self.rng.randrange(self.display.digit_count)
-        self._rings = self._bfs_rings((digit_i, "g"))
+        self._rings = bfs_rings(self._graph, (digit_i, "g"), self.MAX_RING)
         self._current_ring = 0
         self._ticker = Ticker(self.RING_INTERVAL)
         self._fade_elapsed = 0.0
         self._stage = "expand"
-
-    def _bfs_rings(self, start: tuple[int, str]) -> list[list[tuple[int, str]]]:
-        visited = {start: 0}
-        queue = deque([start])
-        rings: list[list[tuple[int, str]]] = [[start]]
-        while queue:
-            node = queue.popleft()
-            dist = visited[node]
-            if dist >= self.MAX_RING:
-                continue
-            for neighbour in self._graph.get(node, ()):
-                if neighbour not in visited:
-                    visited[neighbour] = dist + 1
-                    queue.append(neighbour)
-                    while len(rings) <= dist + 1:
-                        rings.append([])
-                    rings[dist + 1].append(neighbour)
-        return rings
 
     def update(self, dt: float) -> bool:
         if self._stage == "expand":

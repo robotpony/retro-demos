@@ -1,0 +1,165 @@
+"""Tests for the generic graph-walk primitives (framework/graph_walk.py):
+Snake and bfs_rings, extracted from LED's phases once LED II's phases
+needed the identical logic over a different (dot-grid) graph; and Burst,
+built directly here for LED II's fireworks-style RipplePhase.
+
+Uses a plain 3x3 grid graph as a stand-in for either real caller's graph
+shape, since none of Snake, bfs_rings, or Burst care what a node actually is.
+"""
+
+from __future__ import annotations
+
+import random
+
+from retrodemos.framework.graph_walk import Burst, Snake, bfs_rings
+
+
+def _grid_graph(width: int, height: int) -> dict[tuple[int, int], set[tuple[int, int]]]:
+    graph: dict[tuple[int, int], set[tuple[int, int]]] = {}
+    for y in range(height):
+        for x in range(width):
+            neighbours = set()
+            if x > 0:
+                neighbours.add((x - 1, y))
+            if x < width - 1:
+                neighbours.add((x + 1, y))
+            if y > 0:
+                neighbours.add((x, y - 1))
+            if y < height - 1:
+                neighbours.add((x, y + 1))
+            graph[(x, y)] = neighbours
+    return graph
+
+
+def test_snake_starts_at_the_given_node():
+    graph = _grid_graph(3, 3)
+    snake = Snake(graph, start=(1, 1), max_length=3, rng=random.Random(0))
+    assert snake.body == [(1, 1)]
+
+
+def test_snake_grows_up_to_max_length_then_holds():
+    graph = _grid_graph(3, 3)
+    snake = Snake(graph, start=(1, 1), max_length=3, rng=random.Random(0))
+    for _ in range(10):
+        snake.advance()
+        assert len(snake.body) <= 3
+    assert len(snake.body) == 3
+
+
+def test_snake_stays_on_graph_edges():
+    graph = _grid_graph(3, 3)
+    snake = Snake(graph, start=(0, 0), max_length=4, rng=random.Random(1))
+    for _ in range(20):
+        snake.advance()
+        for a, b in zip(snake.body, snake.body[1:]):
+            assert b in graph[a], f"{a} -> {b} isn't an edge in the graph"
+
+
+def test_snake_avoids_immediately_reversing_when_another_option_exists():
+    # On this 3-wide row, the middle node has two neighbours; the snake
+    # should never double back to where it just came from while it can
+    # still choose the other one.
+    graph = _grid_graph(3, 1)
+    snake = Snake(graph, start=(0, 0), max_length=2, rng=random.Random(0))
+    snake.advance()  # body: [(1,0), (0,0)]
+    assert snake.body == [(1, 0), (0, 0)]
+    snake.advance()  # from (1,0), previous is (0,0) -- must go to (2,0)
+    assert snake.body[0] == (2, 0)
+
+
+def test_bfs_rings_first_ring_is_just_the_start():
+    graph = _grid_graph(3, 3)
+    rings = bfs_rings(graph, start=(1, 1), max_ring=2)
+    assert rings[0] == [(1, 1)]
+
+
+def test_bfs_rings_respects_the_max_ring_cap():
+    graph = _grid_graph(5, 5)
+    rings = bfs_rings(graph, start=(2, 2), max_ring=1)
+    assert len(rings) == 2  # ring 0 (start) and ring 1 (its neighbours) only
+
+
+def test_bfs_rings_visits_every_node_reachable_within_the_cap():
+    graph = _grid_graph(3, 3)
+    rings = bfs_rings(graph, start=(0, 0), max_ring=4)
+    visited = {node for ring in rings for node in ring}
+    assert visited == set(graph.keys())
+
+
+def _burst(graph, start=(2, 2), max_ring=2, fade_duration=0.5, spark_count=3, seed=0):
+    return Burst(graph, start, max_ring, fade_duration, spark_count, random.Random(seed))
+
+
+def test_burst_starts_with_nothing_ignited():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph)
+    assert burst.intensities() == {}
+    assert burst.is_expanding
+
+
+def test_expand_next_ring_ignites_the_start_node_first():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph, start=(2, 2))
+    burst.expand_next_ring()
+    intensities = burst.intensities()
+    assert (2, 2) in intensities
+    assert 0.7 <= intensities[(2, 2)] <= 1.0  # default ignite_range
+
+
+def test_is_expanding_becomes_false_once_every_ring_has_ignited():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph, start=(2, 2), max_ring=2)
+    ring_count = len(bfs_rings(graph, (2, 2), 2))
+    for _ in range(ring_count):
+        assert burst.is_expanding
+        burst.expand_next_ring()
+    assert not burst.is_expanding
+
+
+def test_add_sparks_ignites_spark_count_more_nodes():
+    graph = _grid_graph(6, 6)
+    burst = _burst(graph, start=(3, 3), max_ring=1, spark_count=5)
+    while burst.is_expanding:
+        burst.expand_next_ring()
+    before = len(burst.intensities())
+    burst.add_sparks()
+    after = len(burst.intensities())
+    # spark nodes might land on already-ignited ones, so this is a floor,
+    # not an exact count, but at least one new node should light up given
+    # a 6x6 graph and only ~5 nodes ignited by a max_ring=1 burst so far.
+    assert after > before
+
+
+def test_add_sparks_is_idempotent():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph, spark_count=4)
+    while burst.is_expanding:
+        burst.expand_next_ring()
+    burst.add_sparks()
+    first = dict(burst.intensities())
+    burst.add_sparks()
+    assert burst.intensities() == first
+
+
+def test_intensity_fades_to_nothing_over_fade_duration():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph, start=(2, 2), fade_duration=1.0)
+    burst.expand_next_ring()
+    peak = burst.intensities()[(2, 2)]
+    burst.age(0.5)
+    assert 0 < burst.intensities()[(2, 2)] < peak
+    burst.age(0.6)  # total age 1.1s, past fade_duration
+    assert (2, 2) not in burst.intensities()
+
+
+def test_burned_out_requires_sparks_added_and_full_fade():
+    graph = _grid_graph(5, 5)
+    burst = _burst(graph, start=(2, 2), max_ring=1, fade_duration=0.2, spark_count=2)
+    while burst.is_expanding:
+        burst.expand_next_ring()
+    burst.age(1.0)  # rings fully faded, but sparks not added yet
+    assert not burst.burned_out
+    burst.add_sparks()
+    assert not burst.burned_out  # sparks just ignited, still at peak brightness
+    burst.age(1.0)
+    assert burst.burned_out
