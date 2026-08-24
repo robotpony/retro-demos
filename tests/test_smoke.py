@@ -152,3 +152,10 @@ def test_led_ii_demo_runs_headlessly():
 
     demo = LedIIDemo()
     run(demo, scale=2, fps=1000, max_frames=5)
+
+
+def test_title_demo_runs_headlessly():
+    from retrodemos.demos.title import TitleDemo
+
+    demo = TitleDemo()
+    run(demo, scale=2, fps=1000, max_frames=5)

@@ -1,23 +1,32 @@
 """Cell-grid rendering shared by the LED-family demos (LED, LED II, Title,
 Dooley -- see PLAN.md's "LED grid module" section): the seven-segment digit
-renderer (`SevenSegmentDisplay`, LED's) and the dot-matrix renderer
-(`DotMatrixDisplay`, LED II's).
+renderer (`SevenSegmentDisplay`, LED's), the dot-matrix renderer
+(`DotMatrixDisplay`, LED II's), and the bit-column renderer
+(`BitColumnDisplay`, Title's).
 
-Both renderers' geometry and colours were reverse-engineered pixel-by-pixel
-from their source screenshots (`images/LED-thumb.png`,
-`images/LED-II-thumb.png` -- see `docs/pixel-archaeology.md` for method):
-shapes and bezel borders are matched exactly against the source (verified by
-reconstructing each source image byte-for-byte from this geometry). Both
-source images show their display fully lit (LED-thumb.png a lit "8",
-LED-II-thumb.png every dot lit) with no unlit/ghost colour or letterform
-ground truth, so those are invented, not measured -- see each renderer's own
-docstring for what was invented and why.
+Every renderer's geometry and colours were reverse-engineered pixel-by-pixel
+from its source screenshot (`images/LED-thumb.png`, `images/LED-II-thumb.png`,
+`images/TITLE.png` -- see `docs/pixel-archaeology.md` for method): shapes and
+bezel borders are matched exactly against the source (verified by
+reconstructing each source image byte-for-byte, or pixel-exact-diffed against
+it, from this geometry). LED-thumb.png and LED-II-thumb.png show their
+display fully lit (a lit "8", every dot lit) with no unlit/ghost colour or
+letterform ground truth, so those are invented, not measured -- see each
+renderer's own docstring for what was invented and why. TITLE.png is
+different: its two 0-255 reference ramps ARE the actual content-generation
+rule (see BitColumnDisplay), not just a lit/unlit calibration image, and
+there's no invented colour -- every colour BitColumnDisplay uses is measured.
 
-Title and Dooley's dot-matrix needs aren't built yet; extend
-`DotMatrixDisplay` when building those rather than forking a parallel
-renderer, per PLAN.md -- but note its bezel geometry (and, later, Dooley's
-per-cell colour need) is concrete to LED II's own source image, not
-speculatively parameterized for demos that don't exist yet.
+Title turned out not to be a DotMatrixDisplay extension after all, despite
+that being the plan (see PLAN.md's now-corrected note): its bit-pattern area
+has no bezel, no gap between columns (unlike DotMatrixDisplay's dots, gapped
+on both axes), and content that's directly computable from a byte value
+rather than drawn from a font -- different enough pixel-for-pixel that
+extending DotMatrixDisplay would have meant bending its dot-grid model
+around a shape it doesn't describe. Dooley's colour side-column is still an
+open question for whether it fits DotMatrixDisplay or needs its own renderer
+too; decide that when building it, from its own source image, not by
+assumption from Title's outcome.
 """
 
 from __future__ import annotations
@@ -248,11 +257,17 @@ DotNode = tuple[int, int]  # (col, row)
 
 
 def dot_grid_adjacency(cols: int, rows: int) -> dict[DotNode, set[DotNode]]:
-    """Build the 4-neighbour adjacency graph over every (col, row) dot in a
-    `cols` x `rows` DotMatrixDisplay grid -- the dot-grid analogue of
-    segment_adjacency above. Used with framework/graph_walk.py the same way
-    segment_adjacency is: a Snake or bfs_rings walks this graph to find
-    plausible paths/spread across the display."""
+    """Build the 4-neighbour adjacency graph over every (col, row) cell in a
+    `cols` x `rows` grid -- the dot-grid analogue of segment_adjacency
+    above. Used with framework/graph_walk.py the same way segment_adjacency
+    is: a Snake or Burst walks this graph to find plausible paths/spread
+    across a display.
+
+    Purely topological -- nothing here assumes DotMatrixDisplay's dot
+    pitch/size, so it's reused as-is for BitColumnDisplay's bit grid too
+    (Title's phases, `dot_grid_adjacency(width, BitColumnDisplay.ROWS)`),
+    not just LED II's dot grid; a (col, row) cell is a (col, row) cell
+    regardless of what it renders as."""
     graph: dict[DotNode, set[DotNode]] = {}
     for row in range(rows):
         for col in range(cols):
@@ -381,3 +396,94 @@ class DotMatrixDisplay:
         # bottom-right only, an asymmetry the source itself has.
         surface.set_at((1, 0), BEZEL_CORNER)
         surface.set_at((w - 2, h - 1), BEZEL_CORNER)
+
+
+# Title's two reference colour pairs, measured directly from TITLE.png's
+# two 0-255 ramps (not invented -- see module docstring). RED matches
+# DOT_LIT above exactly (both are the same LED-family red at (191, 0, 0));
+# GREEN/BLUE/CYAN are new. Bit off -> the first colour, bit on -> the second.
+BIT_COLUMN_COLORS: dict[str, tuple[tuple[int, int, int], tuple[int, int, int]]] = {
+    "red-green": ((191, 0, 0), (0, 255, 0)),
+    "blue-cyan": ((0, 0, 191), (0, 255, 255)),
+}
+
+
+class BitColumnDisplay:
+    """Title's LED bit-pattern display: each column is one byte value
+    (0-255), rendered as its own 8 bits top-to-bottom (bit 7/MSB at the
+    top, bit 0/LSB at the bottom), one pixel-row per bit with a 1px gap
+    between rows, colour-coded per bit (off -> one colour, on -> another).
+
+    Reverse-engineered from images/TITLE.png's two reference strips, which
+    turned out to be more than a calibration image (see
+    docs/pixel-archaeology.md): both strips show every column x's own
+    value x as its rendered bits, i.e. the *rule* ("column x's bits are
+    x's own bits") is directly legible from the source, not just its
+    colours -- verified by checking exactly this rule against all 256
+    columns x 8 rows x 2 colour pairs with zero mismatches, rather than
+    reconstructing a fixed image and diffing it (there's no single fixed
+    image to target; the source itself already varies by column).
+
+    Unlike SevenSegmentDisplay/DotMatrixDisplay, there's no bezel and no
+    gap between columns (TITLE.png's bit-pattern area runs edge to edge) --
+    a genuinely different pixel model from the other two renderers, not a
+    parameterization of either.
+
+    render_values() is the byte-value-driven API render_raw() feeds into --
+    what the source image itself encodes, and what Title's scrolling
+    content phase draws with. render_raw() addresses individual (col, bit)
+    cells directly, same role DotMatrixDisplay.render_raw plays for LED
+    II: choreography that isn't a value-per-column mapping, e.g. a snake or
+    a firework burst crawling individual bits (see title_phases.py). A
+    (col, bit) cell here is exactly the kind of thing `dot_grid_adjacency`
+    already builds a 4-neighbour graph over -- reused as-is for Title's bit
+    grid rather than duplicated, since neither function cares whether the
+    grid it's walking represents dots or bits.
+    """
+
+    ROWS = 8
+    ROW_PITCH = 2  # 1px lit row + 1px gap
+
+    def __init__(self, width: int, *, colors: tuple[tuple[int, int, int], tuple[int, int, int]]) -> None:
+        self.width = width
+        self.height = self.ROWS * self.ROW_PITCH - 1  # no trailing gap row
+        self.off_color, self.on_color = colors
+
+    def render_values(self, surface: pygame.Surface, values: list[int]) -> None:
+        """Draw one byte value per column. `values` must have exactly
+        `self.width` entries, each 0-255 (out-of-range bits beyond bit 7
+        are simply never read, so a larger int just shows its low byte)."""
+        lit_cells = {
+            (x, row)
+            for x, value in enumerate(values)
+            for row in range(self.ROWS)
+            if (value >> (self.ROWS - 1 - row)) & 1
+        }
+        self.render_raw(surface, lit_cells)
+
+    def render_raw(
+        self,
+        surface: pygame.Surface,
+        lit_cells: set[tuple[int, int]] | dict[tuple[int, int], float] | None = None,
+    ) -> None:
+        """Draw directly from (col, row) bit-grid coordinates, row 0 = bit
+        7 (MSB) through row 7 = bit 0 (LSB) -- the same indexing
+        render_values() derives from a byte value, just addressed directly
+        instead of computed from one.
+
+        `lit_cells` is either a set (every named cell fully on) or a dict
+        mapping cell to a 0..1 intensity, blended between off_color and
+        on_color via lerp_color -- mirrors DotMatrixDisplay.render_raw's
+        two accepted shapes exactly."""
+        if lit_cells is None:
+            intensity: dict[tuple[int, int], float] = {}
+        elif isinstance(lit_cells, dict):
+            intensity = lit_cells
+        else:
+            intensity = {cell: 1.0 for cell in lit_cells}
+        surface.fill(BG)
+        for row in range(self.ROWS):
+            y = row * self.ROW_PITCH
+            for x in range(self.width):
+                color = lerp_color(self.off_color, self.on_color, intensity.get((x, row), 0.0))
+                surface.set_at((x, y), color)
