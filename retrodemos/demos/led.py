@@ -14,9 +14,10 @@ import random
 
 import pygame
 
-from retrodemos.demos.led_phases import ExplosionPhase, NumbersPhase, Phase, PowerUpPhase, SnakePhase, WordsPhase
+from retrodemos.demos.led_phases import ExplosionPhase, NumbersPhase, PowerUpPhase, SnakePhase, WordsPhase
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.led_grid import SevenSegmentDisplay
+from retrodemos.framework.phase import Phase
 
 DIGIT_COUNT = 11  # matches images/LED-thumb.png, which shows 11 digit cells
 

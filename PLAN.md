@@ -15,6 +15,8 @@ retro-demos/
       canvas.py ............ fixed native-res surface, scaled blit to the real window
       keys.py ............... shared event loop: quit / pause / restart handling
       demo.py ............... Demo base class every demo implements
+      phase.py .............. Phase base class for demos that are a scripted, looping sequence of stages
+      ticker.py ............. fixed-interval tick accumulator, for any Phase that advances in discrete steps
       led_grid.py ........... generic cell-grid renderer + scroll/cycle content helpers
 
     demos/
@@ -84,6 +86,12 @@ These are handled once, in the launcher, not per demo. Two demos layer their own
 
 - **Bruce's Windows**: draggable title bar, "Got it" closes the dialog.
 - **Cinqtris**: the "MADMAX" cell is a button that opens an About popup.
+
+### Scripted sequences
+
+A demo can be a single continuous behaviour, or a scripted sequence of stages that loops (LED's power-up -> numbers -> snake -> explosion -> words script is the first example). `framework/phase.py`'s `Phase` base class is the shared unit for the second kind: `update(dt) -> bool` returns True when a stage is finished, `draw(surface)` renders it, and the demo just holds a list of phases and an index, advancing and calling `reset()` on the next phase when the current one finishes. Reuse it for any other demo whose spec describes multiple stages rather than one continuous behaviour (Dooley, Bruce's 21, and Tank Status Window all look like candidates per their specs).
+
+`framework/ticker.py`'s `Ticker` is a small companion: a fixed-interval tick accumulator (`advance(dt) -> int`, how many whole ticks fired) for any phase that advances in discrete steps rather than continuously, so each phase doesn't hand-roll its own dt-accumulation loop. It correctly catches up a slow frame instead of losing time; before it existed, LED's phases each wrote this by hand and did so inconsistently (see `retrodemos/demos/led_phases.py`'s history for the bug that motivated pulling it out).
 
 ### LED grid module
 

@@ -19,27 +19,9 @@ from collections import deque
 
 import pygame
 
-from retrodemos.framework.led_grid import DIGIT_SEGMENTS, RING_ORDER, SevenSegmentDisplay, segment_adjacency
-
-
-class Phase:
-    """One stage of the script. update() returns True once finished; the
-    sequencer (LedDemo) calls reset() right before a phase's first run and
-    every time it's about to run again, since the whole script loops."""
-
-    def __init__(self, display: SevenSegmentDisplay, rng: random.Random) -> None:
-        self.display = display
-        self.rng = rng
-        self.reset()
-
-    def reset(self) -> None:
-        pass
-
-    def update(self, dt: float) -> bool:
-        raise NotImplementedError
-
-    def draw(self, surface: pygame.Surface) -> None:
-        raise NotImplementedError
+from retrodemos.framework.led_grid import DIGIT_SEGMENTS, RING_ORDER, segment_adjacency
+from retrodemos.framework.phase import Phase
+from retrodemos.framework.ticker import Ticker
 
 
 class PowerUpPhase(Phase):
@@ -60,7 +42,8 @@ class PowerUpPhase(Phase):
 
     def reset(self) -> None:
         self._stage = "flicker"
-        self._timer = 0.0
+        self._ticker = Ticker(self.FLICKER_TICK_DURATION)
+        self._blank_elapsed = 0.0
         self._flicker_tick_count = 0
         self._flicker_segments: dict[int, set[str]] = {}
         self._flicker_dots: set[int] = set()
@@ -75,28 +58,36 @@ class PowerUpPhase(Phase):
         }
         self._flicker_dots = {i for i in range(n) if self.rng.random() < self.FLICKER_PROBABILITY}
 
+    def _sweep_tick_duration(self) -> float:
+        progress = self._sweep_step / self._sweep_total_steps
+        return self.SWEEP_START_TICK_DURATION + (
+            self.SWEEP_END_TICK_DURATION - self.SWEEP_START_TICK_DURATION
+        ) * progress
+
     def update(self, dt: float) -> bool:
-        self._timer += dt
         if self._stage == "flicker":
-            if self._timer >= self.FLICKER_TICK_DURATION:
-                self._timer = 0.0
+            for _ in range(self._ticker.advance(dt)):
                 self._randomize_flicker()
                 self._flicker_tick_count += 1
                 if self._flicker_tick_count >= self.FLICKER_TICKS:
                     self._stage = "sweep"
+                    self._ticker.interval = self._sweep_tick_duration()
+                    self._ticker.reset()
+                    break
             return False
         if self._stage == "sweep":
-            progress = self._sweep_step / self._sweep_total_steps
-            tick_duration = self.SWEEP_START_TICK_DURATION + (
-                self.SWEEP_END_TICK_DURATION - self.SWEEP_START_TICK_DURATION
-            ) * progress
-            if self._timer >= tick_duration:
-                self._timer = 0.0
+            # Sweep speeds up over its 3 laps, so the ticker's interval is
+            # updated before each poll (see Ticker.advance's docstring).
+            self._ticker.interval = self._sweep_tick_duration()
+            for _ in range(self._ticker.advance(dt)):
                 self._sweep_step += 1
                 if self._sweep_step >= self._sweep_total_steps:
                     self._stage = "blank"
+                    break
+                self._ticker.interval = self._sweep_tick_duration()
             return False
-        return self._timer >= self.BLANK_HOLD  # stage == "blank"
+        self._blank_elapsed += dt
+        return self._blank_elapsed >= self.BLANK_HOLD  # stage == "blank"
 
     def draw(self, surface: pygame.Surface) -> None:
         if self._stage == "flicker":
@@ -117,21 +108,19 @@ class NumbersPhase(Phase):
     SCROLL_INTERVAL = 0.4
     LAPS = 2
 
-    def __init__(self, display: SevenSegmentDisplay, rng: random.Random, text: str | None = None) -> None:
+    def __init__(self, display, rng: random.Random, text: str | None = None) -> None:
         self.text = text or self.DEFAULT_TEXT
         super().__init__(display, rng)
 
     def reset(self) -> None:
-        self._elapsed = 0.0
+        self._ticker = Ticker(self.SCROLL_INTERVAL)
         self._offset = 0
         self._steps = 0
         self._loop_text = self.text + " " * self.display.digit_count
         self._total_steps = self.LAPS * len(self._loop_text)
 
     def update(self, dt: float) -> bool:
-        self._elapsed += dt
-        while self._elapsed >= self.SCROLL_INTERVAL:
-            self._elapsed -= self.SCROLL_INTERVAL
+        for _ in range(self._ticker.advance(dt)):
             self._offset = (self._offset + 1) % len(self._loop_text)
             self._steps += 1
         return self._steps >= self._total_steps
@@ -155,13 +144,11 @@ class SnakePhase(Phase):
         self._graph = segment_adjacency(self.display.digit_count)
         start = self.rng.choice(list(self._graph.keys()))
         self._body: list[tuple[int, str]] = [start]
-        self._elapsed = 0.0
+        self._ticker = Ticker(self.STEP_INTERVAL)
         self._steps_taken = 0
 
     def update(self, dt: float) -> bool:
-        self._elapsed += dt
-        while self._elapsed >= self.STEP_INTERVAL:
-            self._elapsed -= self.STEP_INTERVAL
+        for _ in range(self._ticker.advance(dt)):
             self._advance()
             self._steps_taken += 1
         return self._steps_taken >= self.STEPS
@@ -202,7 +189,8 @@ class ExplosionPhase(Phase):
         digit_i = self.rng.randrange(self.display.digit_count)
         self._rings = self._bfs_rings((digit_i, "g"))
         self._current_ring = 0
-        self._elapsed = 0.0
+        self._ticker = Ticker(self.RING_INTERVAL)
+        self._fade_elapsed = 0.0
         self._stage = "expand"
 
     def _bfs_rings(self, start: tuple[int, str]) -> list[list[tuple[int, str]]]:
@@ -224,16 +212,16 @@ class ExplosionPhase(Phase):
         return rings
 
     def update(self, dt: float) -> bool:
-        self._elapsed += dt
         if self._stage == "expand":
-            if self._elapsed >= self.RING_INTERVAL:
-                self._elapsed = 0.0
+            for _ in range(self._ticker.advance(dt)):
                 self._current_ring += 1
                 if self._current_ring >= len(self._rings):
                     self._stage = "fade"
+                    break
             return False
         # stage == "fade"
-        if self._elapsed >= self.FADE_HOLD:
+        self._fade_elapsed += dt
+        if self._fade_elapsed >= self.FADE_HOLD:
             self._repeat_index += 1
             if self._repeat_index >= self.REPEATS:
                 return True
