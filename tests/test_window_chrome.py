@@ -37,13 +37,21 @@ def test_content_is_blitted_into_the_composed_window_unmodified():
     assert found
 
 
-def test_returns_title_bar_and_close_button_rects():
+def test_returns_title_bar_close_button_and_content_rects():
     content = _content()
     _, rects = render_window_chrome(content, "TEST")
-    assert "title_bar" in rects
-    assert "close_button" in rects
-    assert isinstance(rects["title_bar"], pygame.Rect)
-    assert isinstance(rects["close_button"], pygame.Rect)
+    for key in ("title_bar", "close_button", "content"):
+        assert key in rects
+        assert isinstance(rects[key], pygame.Rect)
+
+
+def test_content_rect_matches_the_content_surfaces_own_size_and_position():
+    content = _content(40, 20)
+    win, rects = render_window_chrome(content, "TEST")
+    assert rects["content"].size == (40, 20)
+    sub = win.subsurface(rects["content"])
+    assert sub.get_at((0, 0))[:3] == (255, 0, 0)
+    assert sub.get_at((39, 19))[:3] == (255, 0, 0)
 
 
 def test_close_button_sits_within_the_title_bar_and_is_the_expected_size():

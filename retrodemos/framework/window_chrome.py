@@ -96,10 +96,12 @@ def render_window_chrome(content: pygame.Surface, title: str) -> tuple[pygame.Su
     grafted onto the title bar's right end (the source's own Dialog has no
     close control at all -- new, not measured).
 
-    Returns the composed surface and a dict of two rects in that surface's
-    own local coordinates -- `"title_bar"` (drag hit-test) and
-    `"close_button"` (click hit-test) -- for the caller to translate into
-    screen space by adding wherever the window itself is positioned.
+    Returns the composed surface and a dict of rects in that surface's own
+    local coordinates -- `"title_bar"` (drag hit-test), `"close_button"`
+    (click hit-test), and `"content"` (where `content` itself landed, for
+    translating an event's position into the wrapped demo's own native
+    space) -- for the caller to translate into screen space by adding
+    wherever the window itself is positioned.
     """
     title_cells, title_width = text_cells(title.upper())
     title_bar_h = GLYPH_H + 2 * TITLE_TEXT_PADDING
@@ -140,4 +142,5 @@ def render_window_chrome(content: pygame.Surface, title: str) -> tuple[pygame.Su
     return surf, {
         "title_bar": pygame.Rect(*title_bevel_rect),
         "close_button": close_rect,
+        "content": pygame.Rect(content_pos, content.get_size()),
     }

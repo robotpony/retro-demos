@@ -16,10 +16,13 @@ python3 -m venv .venv
 ## Running a demo
 
 ```bash
+# Open the desktop shell (the root interface -- click an icon to open a demo)
+.venv/bin/python -m retrodemos
+
 # List available demos
 .venv/bin/python -m retrodemos --list
 
-# Run one
+# Run one demo standalone, full-window, no desktop chrome
 .venv/bin/python -m retrodemos <name>
 ```
 
@@ -41,7 +44,7 @@ Every demo shares these keybindings:
 | Space | Pause / resume |
 | R | Restart |
 
-Two demos add their own controls on top: Bruce's Windows (drag the title bar, click "Got it" to close the dialog) and Cinqtris (the "MADMAX" cell is a button that opens an About popup). See each demo's spec in `docs/` for details.
+The desktop shell (`python -m retrodemos` with no name) adds its own controls: click an icon to open that demo as a window, drag its title bar to move it, click the close button to shut it, click a window to bring it to front. Two demos add their own controls when run standalone: Bruce's Windows ("Got it" closes its dialog) and Cinqtris (the "MADMAX" cell is a button that opens an About popup). See each demo's spec in `docs/` for details.
 
 ## Project docs
 

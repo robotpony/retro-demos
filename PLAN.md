@@ -133,9 +133,11 @@ Dooley (originally slotted at order 4, "same framework, two content streams") wa
 
 Bruce's 21's slot wasn't explicit in the "simplest first" decision; it's placed by complexity (sprite art plus multi-phase cycling, no interaction) between Cinqtris and Tank Status Window. Move it if you'd rather it come earlier.
 
-## Future: the unified desktop (end state)
+## The unified desktop (end state) -- built 2026-08-25
 
-Logged 2026-08-24, spec settled 2026-08-25 (still not scheduled against the build order above -- most of it needs every individual demo built first). Bruce's Windows becomes the **root interface of `retrodemos` itself**: a 1024x576 desktop shell, one icon per demo, that every other demo opens inside as its own draggable/closable window. The original title-bar+dialog+status-bar exhibit (what `bruces_windows.py` builds today) becomes just one of the icons -- "the actual Window demo from the PNG" -- not the whole experience.
+Logged 2026-08-24, spec settled and built the next day. Bruce's Windows is now the **root interface of `retrodemos` itself**: `python -m retrodemos` with no name opens `retrodemos/demos/desktop.py`, a 1024x576 shell with one icon per built demo, each opening as its own draggable/closable window (`framework/window_chrome.py`). The original title-bar+dialog+status-bar exhibit (`bruces_windows.py`) is now just one of those icons -- "the actual Window demo from the PNG" -- not the whole experience. Icon glyphs (new pixel art, no source to measure against) were mocked up and confirmed with Bruce first, same workflow every other invented-content piece in this project got.
+
+Not every demo has an icon -- only the five built so far (LED, LED II, Title, CD Player, Bruce's Windows). Cinqtris, Bruce's 21, and Tank Status Window join `desktop.py`'s `_DEMO_ENTRIES` list as each is built.
 
 ### Settled design (confirmed with Bruce, 2026-08-25)
 
@@ -148,14 +150,20 @@ Logged 2026-08-24, spec settled 2026-08-25 (still not scheduled against the buil
 - **Window sizing**: native 1:1 pixel size per demo, no scaling/padding -- authentic to how differently-sized these programs actually were.
 - **`bruces_windows.py` refactor**: drops its own 320x240 canvas and internal drag logic once the desktop handles dragging for every window uniformly -- goes back to a plain 200x200 static render (its "Got it" closes-the-dialog logic stays; that's the exhibit's own content, not chrome). Opened from the desktop like any other demo, wrapped in the same generic window chrome as everything else.
 
+### How it's built
+
+- **`framework/window_chrome.py`**: `bevel_rect`/`black_ring` (moved out of `bruces_windows.py`, now byte-exact-verified primitives with a second real caller) plus `render_window_chrome(content, title)`, which wraps any demo's `draw()` output in the Dialog archetype + a close button and returns `title_bar`/`close_button`/`content` hit-test rects in the composed surface's own local coordinates.
+- **`framework/pixel_font.py`**: the hand-designed 5x7 upper-case A-Z/0-9 alphabet, `text_cells()` laying out arbitrary title text the same way `DotMatrixDisplay.text_dots` does.
+- **`retrodemos/demos/desktop.py`**: `DesktopDemo` owns `_open` (key -> `_OpenWindow`, each caching its own chrome geometry once at open time since it only depends on content size + title) and `_order` (z-order list, last = focused/topmost). Click routing checks, in order: an open window's close button, its title bar (starts a drag + focuses), its content area (focuses + forwards the click into the wrapped demo's own `handle_event`, translated to that demo's native coordinates via the `content` rect), then the icon row (opens a fresh instance, or just focuses if that demo's already open). Every open demo's `update(dt)` runs every frame regardless of focus -- background windows keep animating, not paused.
+- **`__main__.py`**: `DESKTOP_DEMO_NAME = "desktop"`; no name given resolves to it before dispatch, so it's both the default and launchable by name like any other demo.
+
 ### Still open
 
-- Do the shared quit/pause/restart keybindings (`framework/keys.py`) apply per-window (focused window only) or globally to every window at once?
-- Window chrome is currently deliberately *not* shared (`PLAN.md`'s "Window chrome" section) since only Bruce's Windows needed it; the desktop is exactly the "fourth chrome-bearing demo" that section already flagged as the trigger to revisit that decision -- the two border-style helpers (`_bevel_rect`, `_black_ring`) need to move from `bruces_windows.py` into `framework/` once the desktop is the second real caller.
-- Exact icon glyph designs (one per demo) -- to be mocked up and confirmed before implementation.
-- Build order/sequencing for the desktop's own pieces (font, generic window wrapper, icon rendering + click handling, multi-demo embedding, `__main__.py` wiring) isn't fixed yet; natural to build and test the font and the window-wrapper chrome as standalone, reusable units first since everything else depends on them.
+- The shared quit/pause/restart keybindings (`framework/keys.py`) apply globally to the whole desktop, not per-window -- this wasn't a deliberate per-window design, just what building nothing special for it defaults to; revisit if it turns out to feel wrong once there's more than one or two demos open at a time (e.g. R currently restarts the whole desktop, closing every open window, not just the focused one).
+- `framework/window_chrome.py`'s two primitives (`bevel_rect`, `black_ring`) are extracted and shared, but `PLAN.md`'s "Window chrome" section (CD Player, Bruce's Windows, Tank Status Window each drawing their own borders independently) hasn't been revisited yet for whether CD Player's or a future Tank Status Window's own chrome should route through them too.
+- Only 5 of the 9 planned demos have desktop icons; Cinqtris/Bruce's 21/Tank Status Window join as they're built (order 6-9 in the "Build order" table above).
 
-Groundwork done 2026-08-25, ahead of the desktop itself: `WINDOW1.png` review identified two distinct window archetypes (Main Window: outer frame, sunken body-panel bevel, title bar, corner boxes, status bar; Dialog: black ring + raised bevel, title bar only, no other chrome -- see `docs/bruces-windows.md`) and two measured, reusable border-style helpers that together reconstruct the whole window byte-exact against the source. Spec settled the same day (see "Settled design" above), and its two foundational, demo-agnostic pieces are built and tested: `framework/window_chrome.py` (moved `bevel_rect`/`black_ring` out of `bruces_windows.py`, plus a new `render_window_chrome()` that wraps any demo's content in the Dialog archetype + a close button, returning `title_bar`/`close_button` hit-test rects) and `framework/pixel_font.py` (a hand-designed 5x7 A-Z/0-9 alphabet, upper-case only, for arbitrary window titles). `bruces_windows.py` itself dropped its own 320x240 canvas and drag logic, back to a plain 200x200 static render. Not yet built: the desktop shell itself (icon glyphs/mockups, click-to-open handling, multi-demo embedding, `__main__.py`'s no-argument default).
+Follow-up review the same day: `WINDOW1.png` turned out to show two distinct window archetypes (Main Window: outer frame, sunken body-panel bevel, title bar, corner boxes, status bar; Dialog: black ring + raised bevel, title bar only, no other chrome -- see `docs/bruces-windows.md`) built from two measured, reusable border-style primitives that together reconstruct the whole window byte-exact against the source. That review also settled the unified-desktop spec, built the next day -- see "The unified desktop (end state)" above for the full account. `bruces_windows.py` itself dropped its own 320x240 canvas and drag logic once the desktop took that over generically, back to a plain 200x200 static render.
 
 Per README priorities 3 and 4, each demo gets up to 1 day to build and iterate, plus up to 1 more day to polish. That's a ceiling, not a target. The framework itself isn't covered by that timebox; budget it separately since every demo depends on it being right.
 
@@ -207,4 +215,4 @@ Build order 5 (Bruce's Windows) is done (2026-08-25), the first interactive demo
 
 ## Next step
 
-Build order 6: Cinqtris. Reuses the interaction pattern Bruce's Windows just validated (mouse click via `runtime.py`'s coordinate rescaling) for its own "MADMAX" About-button popup; adds sprite art and pattern-cycling on top. Check `docs/cinqtris.md` and do its own pixel-archaeology pass before assuming anything carries over.
+Build order 6: Cinqtris. Reuses the interaction pattern Bruce's Windows just validated (mouse click via `runtime.py`'s coordinate rescaling) for its own "MADMAX" About-button popup; adds sprite art and pattern-cycling on top. Check `docs/cinqtris.md` and do its own pixel-archaeology pass before assuming anything carries over. Once built, add it to `desktop.py`'s `_DEMO_ENTRIES` (icon glyph, mocked up and confirmed first, same as the other five) so the desktop shell can open it too.

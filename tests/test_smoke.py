@@ -129,13 +129,27 @@ def test_handle_shared_keys_maps_quit_pause_restart():
     assert not handle_shared_keys(other_event).claimed
 
 
-def test_cli_lists_demos_when_none_given(capsys):
+def test_cli_lists_demos_with_explicit_list_flag(capsys):
     from retrodemos.__main__ import main
 
     exit_code = main(["--list"])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "No demos yet" in captured.out or "Available demos" in captured.out
+
+
+def test_cli_no_name_defaults_to_the_desktop_shell():
+    # main([]) would actually launch and block on run()'s event loop (no
+    # max_frames to bound it), so this checks the dispatch logic itself --
+    # the desktop is what "no name given" resolves to and loads as --
+    # rather than calling main() for real.
+    from retrodemos.__main__ import DESKTOP_DEMO_NAME, available_demos, build_parser, load_demo
+
+    args = build_parser().parse_args([])
+    assert args.name is None
+    assert DESKTOP_DEMO_NAME in available_demos()
+    demo = load_demo(DESKTOP_DEMO_NAME)
+    assert demo.NATIVE_SIZE == (1024, 576)
 
 
 def test_cli_list_excludes_helper_modules_without_a_demo_class():

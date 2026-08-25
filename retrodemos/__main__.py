@@ -2,6 +2,14 @@
 
 Owns argument parsing once so no demo duplicates it. A demo is any module in
 retrodemos/demos/ that exposes a module-level DEMO_CLASS (a Demo subclass).
+
+`python -m retrodemos` with no name opens the desktop shell (`demos/desktop.py`,
+`DESKTOP_DEMO_NAME` below) instead of printing `--list`'s text dump -- the
+settled spec for `PLAN.md`'s "Future: the unified desktop" (2026-08-25):
+the desktop is the root interface of `retrodemos` itself now, not just
+another demo, though it's still launchable by name
+(`python -m retrodemos desktop`) like any other for dev/testing. `--list`
+stays available as an explicit flag for the old text listing.
 """
 
 from __future__ import annotations
@@ -16,6 +24,8 @@ import pygame
 from retrodemos import demos as demos_package
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.runtime import run
+
+DESKTOP_DEMO_NAME = "desktop"
 
 
 def available_demos() -> list[str]:
@@ -57,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     demos = available_demos()
 
-    if args.list or not args.name:
+    if args.list:
         if demos:
             print("Available demos:")
             for name in demos:
@@ -66,13 +76,14 @@ def main(argv: list[str] | None = None) -> int:
             print("No demos yet. See PLAN.md's build order.")
         return 0
 
-    if args.name not in demos:
-        print(f"Unknown demo: {args.name!r}. Use --list to see available demos.", file=sys.stderr)
+    name = args.name or DESKTOP_DEMO_NAME
+    if name not in demos:
+        print(f"Unknown demo: {name!r}. Use --list to see available demos.", file=sys.stderr)
         return 1
 
     pygame.init()
     try:
-        demo = load_demo(args.name, text=args.text)
+        demo = load_demo(name, text=args.text)
         run(demo, scale=args.scale, fps=args.fps, fullscreen=args.fullscreen)
     finally:
         pygame.quit()
