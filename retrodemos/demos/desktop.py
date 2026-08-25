@@ -39,7 +39,8 @@ NATIVE_SIZE = (1024, 576)
 ICON_SCALE = 3  # icon glyph pixel scale; labels render at the font's own native 1px
 ICON_SLOT_W = 110
 ICON_SLOT_H = 70
-ICON_ORIGIN = (40, 30)
+ICON_ORIGIN = (30, 30)
+ICON_GRID_ROWS = 6  # icons per column before wrapping to a new column, classic desktop-style
 LABEL_GAP = 5  # px between an icon's glyph and its label, at ICON_SCALE
 
 # Icon glyphs: new pixel art, "#"=lit, not archaeology -- see module
@@ -118,8 +119,12 @@ def _icon_glyph_size(key: str) -> tuple[int, int]:
 
 
 def _icon_slot_rect(index: int) -> pygame.Rect:
+    # Column-major grid, filling top-to-bottom then wrapping to a new
+    # column on the right -- keeps icons pinned to the left edge and all
+    # visible at once, the way a real desktop lays out its icons.
     x0, y0 = ICON_ORIGIN
-    return pygame.Rect(x0 + index * ICON_SLOT_W, y0, ICON_SLOT_W, ICON_SLOT_H)
+    col, row = divmod(index, ICON_GRID_ROWS)
+    return pygame.Rect(x0 + col * ICON_SLOT_W, y0 + row * ICON_SLOT_H, ICON_SLOT_W, ICON_SLOT_H)
 
 
 def _draw_icon(surface: pygame.Surface, key: str, title: str, slot: pygame.Rect) -> None:
