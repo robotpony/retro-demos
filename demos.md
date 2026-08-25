@@ -12,7 +12,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 |---|---|---|---|---|
 | Bruce's 21 | `CARDS.png`, `BACKS.png` | Automated | [docs/bruces-21.md](docs/bruces-21.md) | Not started |
 | Cinqtris | `CT_ANI.png`, `CT_PRTS.png` | Automated + one button (About popup) | [docs/cinqtris.md](docs/cinqtris.md) | Not started |
-| CD Player | `CDPLAYER.png` | Automated, simulated audio | [docs/cd-player.md](docs/cd-player.md) | Not started |
+| CD Player | `CDPLAYER.png` | Automated, simulated audio | [docs/cd-player.md](docs/cd-player.md) | Built (`retrodemos/demos/cd_player.py`) |
 | LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Built (`retrodemos/demos/led.py`) |
 | LED II | `LED-II-thumb.png` | Automated | [docs/led-ii.md](docs/led-ii.md) | Built (`retrodemos/demos/led_ii.py`) |
 | Title | `TITLE.png` | Automated | [docs/title.md](docs/title.md) | Built (`retrodemos/demos/title.py`) |

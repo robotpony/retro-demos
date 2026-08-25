@@ -2,14 +2,54 @@
 
 **Source:** `CDPLAYER.png`
 **Mode:** Automated attract-mode
+**Build:** Done (`retrodemos/demos/cd_player.py`)
 
 ## What it shows
 
-CD player chrome: numeric LED time/track readout, transport buttons (play/pause/stop/skip/eject), a vertical slider bank, and green dot-matrix level meters.
+`CDPLAYER.png` (384x78) turned out not to be one coherent screenshot, the
+same surprise Title's and Dooley's source images held: it bundles three
+stacked reference bands. Band A (y0-28) and Band B (y30-53) are two
+differently-sized captures of the same widget vocabulary (transport
+buttons, a "cd" logo, a slider bank); Band C (y56-77) is a separate
+full-width level-meter strip. Built around Band B (confirmed with Bruce,
+2026-08-24) since it's the larger, more detailed capture, and its long
+18-cell readout doubles as a segment-font calibration strip -- every
+segment shows bright green (on) or dark red (off) directly in the source,
+better ground truth than LED's own font had. Decoded as "0123456789" plus
+isolated-segment test cells; this font's own genuine quirks are kept, not
+"corrected" to a textbook shape -- **6 has no top bar**, **9 has no bottom
+bar**.
+
+- **Numeric LED readout**: pixel-verified segment font (11x21 per cell),
+  single colour (Band A's own measured red), showing track number + time.
+- **Transport buttons**: all 6 icons (prev, next, stop, pause, play, close)
+  pixel-verified glyphs extracted from Band B.
+- **Level meter**: 1px dots on a 3px pitch, red/green, colours used
+  directly from the source (no invented dimness needed -- Band C already
+  shows both).
+- **Slider bank**: track + tick geometry pixel-verified from Band B; no
+  thumb/handle is visible in the source (a blank calibration state), so
+  the demo's slider levels and thumb positions are invented content.
+- **"cd" logo**: pixel-verified glyph from Band B.
+- Overall panel layout (where each piece sits relative to the others)
+  isn't a measurement -- Band B's own pieces aren't laid out as one
+  coherent window, so composing them into a single CD Player face was
+  this build's own design call.
 
 ## Behaviour
 
-Simulated playback only, no real audio. The time counter increments on its own, the level meters animate with a fake waveform, and transport buttons visually indicate state (e.g. "play" shown as pressed) without triggering real audio.
+Simulated playback only, no real audio, one continuous loop (no
+`Phase`/`PhaseSequence` -- see `cd_player.py`'s module docstring for why,
+same reasoning Dooley's continuous design used):
+
+- The time counter increments each second; after `TRACK_LENGTH` (180s) it
+  wraps to the next track, wrapping the track number after `TRACK_COUNT`
+  (12).
+- Playback pauses for `PAUSE_DURATION` (3s) every `PAUSE_EVERY` (25s) of
+  play, and the transport buttons pick out "play" or "pause" (drawn sunken,
+  its icon picked out in red) to match.
+- The level meter fakes a waveform (summed sine curves, invented, not a
+  real audio analysis) that goes quiet while paused.
 
 ## Interaction
 
@@ -17,8 +57,20 @@ None beyond the shared quit/pause controls.
 
 ## Assets
 
-No existing sprite sheet; chrome is custom-drawn to match `CDPLAYER.png`.
+No shared framework renderer -- `cd_player.py` draws its own chrome
+directly (digit font, icons, meter, sliders, logo), matching
+`PLAN.md`'s "Window chrome" reasoning for why CD Player, Bruce's Windows,
+and Tank Status Window each draw their own borders independently rather
+than sharing one. No sprite sheet exists; everything is pixel-verified
+coordinate/glyph data extracted from `CDPLAYER.png`, same method as the
+LED-family renderers (`docs/pixel-archaeology.md`).
 
 ## Notes
 
 No real audio files are bundled or played, by design.
+
+## Open questions
+
+- Whether the fake waveform should look more musical (recognizable peaks
+  tied to a "song" rather than pure summed sine curves) is unresolved --
+  built simple for now.
