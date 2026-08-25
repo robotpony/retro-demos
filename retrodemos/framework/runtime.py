@@ -28,7 +28,11 @@ def run(
     pygame.init()/pygame.quit().
     """
     canvas = Canvas(demo.NATIVE_SIZE, scale=scale)
-    flags = pygame.FULLSCREEN if fullscreen else 0
+    # NOFRAME drops the OS title bar/border in windowed mode, so the window
+    # reads as the retro program itself rather than a modern app window
+    # around it; redundant (and skipped) under FULLSCREEN, which already has
+    # no window chrome of its own.
+    flags = pygame.FULLSCREEN if fullscreen else pygame.NOFRAME
     window = pygame.display.set_mode(canvas.window_size, flags)
     clock = pygame.time.Clock()
 
