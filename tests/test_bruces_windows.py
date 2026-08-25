@@ -1,7 +1,16 @@
 """Tests for the Bruce's Windows demo: the one interactive demo (title-bar
 drag, "Got it" closes the dialog). Also exercises runtime.py's mouse
 coordinate rescaling indirectly through the demo's own screen-rect
-helpers; the rescaling itself is covered directly in tests/test_smoke.py."""
+helpers; the rescaling itself is covered directly in tests/test_smoke.py.
+
+Unlike the other LED-family renderers' tests, this file's reconstruct-and-
+diff check runs live against images/WINDOW1.png rather than being noted as
+"done interactively" -- the image is tracked in the repo and the path
+resolves fine from the project root pytest is always run from (see
+CLAUDE.md's Commands section), so there's no reason not to guard the
+byte-exact match (achieved 2026-08-25, after a review found the first
+build's bevel geometry had real bugs, not just imprecision) with a real
+test."""
 
 from __future__ import annotations
 
@@ -14,6 +23,7 @@ from retrodemos.demos.bruces_windows import (
     WINDOW_SIZE,
     WINDOW_TITLE_ROWS,
     BruceWindowsDemo,
+    _render_window,
 )
 
 
@@ -137,3 +147,17 @@ def test_got_it_and_status_text_glyphs_are_rectangular_tables():
     for rows in (GOT_IT_ROWS, STATUS_TEXT_ROWS):
         widths = {len(row) for row in rows}
         assert len(widths) == 1
+
+
+def test_render_window_is_byte_exact_against_the_source_image():
+    src = pygame.image.load("images/WINDOW1.png")  # no convert_alpha needed, just reading pixels
+    mine = _render_window(dialog_open=True)
+    w, h = src.get_size()
+    assert mine.get_size() == (w, h)
+    mismatches = [
+        (x, y)
+        for y in range(h)
+        for x in range(w)
+        if src.get_at((x, y))[:3] != mine.get_at((x, y))[:3]
+    ]
+    assert mismatches == []

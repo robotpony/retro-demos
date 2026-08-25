@@ -15,31 +15,43 @@ source quirk: it reads "This is a status a bar...", not "This is a status
 bar..." as the original terse spec paraphrased it -- an extra "a", kept
 verbatim rather than "corrected."
 
-The window chrome uses four distinct border styles, not one generic
-bevel -- caught on review (2026-08-25) after the first pass collapsed them
-all into a single helper and got the bevel direction backwards in the
-process. Each is now measured by sampling its edge profile (background ->
-border colours -> content) outside-in on all four sides, the same
-"verify programmatically" bar `docs/pixel-archaeology.md` sets, rather
-than eyeballed:
-- **Outer frame**: 1px black, 1px white, a 2px background margin, then
-  either a corner-box bevel or a plain sunken bevel framing each title bar
-  (see below), depending on x/y.
-- **Simple bevel** (`_bevel_rect`): a single 1px line -- white on top/left
-  + grey on bottom/right for "raised" (the corner boxes; the first pass
-  had this direction backwards), grey/white swapped for "sunken" (the
-  frame around both cyan title bars, main and dialog).
-- **Ring frame** (`_ring_frame`, the "Got it" button): three concentric
-  1px outlines, grey/black/white from the outside in, uniformly on all
-  four sides -- not a directional bevel at all, just three nested rules.
-- **Double rule** (`_double_rule_rect`, the status text field and the
-  icon-grid box): a single grey line and a single white line, white
-  outermost, with background gaps on both sides and before the content --
-  not a touching two-tone bevel.
+The window chrome is now reconstructed byte-exact against
+`images/WINDOW1.png` (verified in `_render_window`'s own reconstruct-and-
+diff test, `tests/test_bruces_windows.py`) -- two review passes were
+needed to get there (2026-08-25), each catching mistakes a first
+eyeballed pass had made, not just imprecision:
+
+1. First pass: one generic raised/sunken-rect helper, approximated, bevel
+   direction backwards (dark top/left instead of light top/left for
+   "raised").
+2. Second pass: measured every element's edge profile outside-in on all
+   four sides (`docs/pixel-archaeology.md`'s "verify programmatically"
+   bar) instead of eyeballing, which found the whole chrome is actually
+   built from just **two** primitives, not the four this pass first
+   guessed:
+   - **`_bevel_rect`**: a single 1px line, white top/left + grey
+     bottom/right for "raised", swapped for "sunken". Used everywhere --
+     the outer window edge (raised, closest to the viewer), the body
+     panel (sunken, the content sits inside it), both title bars
+     (sunken), the corner boxes (raised), the status text field and
+     icon-grid box (sunken, not the "double rule with a gap" this pass
+     first guessed -- it's the exact same touching bevel as everything
+     else), and both the Dialog and the "Got it" button, which each
+     nest a **raised** bevel just inside a **sunken** one (the dialog
+     floats above the body; the button is a raised control sitting in a
+     sunken well) with a black ring sandwiched between -- not the
+     uniform grey/black/white "ring frame" this pass first guessed.
+   - **`_black_ring`**: a plain 1px black divider, used only between the
+     Dialog's/button's two opposite-direction bevels.
+   A third finding: every 1px outline is **mitered, not closed** -- the
+   two corners where its two colours would collide (top-right,
+   bottom-left) are left unset, showing whatever's underneath, while the
+   other two corners (each touched by only one colour) are filled
+   normally. A naive closed rectangle gets every corner wrong.
 
 The status bar's own green/red icon grid (12x4 cells, 2px squares on a
-3px pitch) *is* pixel-verified, since its exact pattern is content, not
-just a border.
+3px pitch) and the resize grip (`RESIZE_GRIP_ROWS`) are both pixel-verified
+glyphs too, same as the text.
 
 Dragging needs `framework/runtime.py`'s new mouse-coordinate rescaling
 (added the same day this demo was built, see its own docstring) -- the
@@ -162,13 +174,16 @@ def _draw_glyph(surface: pygame.Surface, origin: tuple[int, int], rows: tuple[st
 
 def _rect_outline(surface: pygame.Surface, rect: tuple[int, int, int, int], top_left: tuple[int, int, int], bottom_right: tuple[int, int, int]) -> None:
     """One 1px outline: `top_left` on the top+left edges, `bottom_right` on
-    the bottom+right edges. The shared primitive `_bevel_rect` and
-    `_ring_frame` both draw with, at different insets."""
+    the bottom+right edges, mitered rather than closed -- measured against
+    the source (2026-08-25): the top-right and bottom-left corners (where
+    the two colours would otherwise collide) are left unset, showing
+    whatever's underneath, while the top-left and bottom-right corners
+    (each touched by only one colour) are filled in normally."""
     x, y, w, h = rect
-    pygame.draw.line(surface, top_left, (x, y), (x + w - 1, y))
-    pygame.draw.line(surface, top_left, (x, y), (x, y + h - 1))
-    pygame.draw.line(surface, bottom_right, (x + w - 1, y), (x + w - 1, y + h - 1))
-    pygame.draw.line(surface, bottom_right, (x, y + h - 1), (x + w - 1, y + h - 1))
+    pygame.draw.line(surface, top_left, (x, y), (x + w - 2, y))
+    pygame.draw.line(surface, top_left, (x, y), (x, y + h - 2))
+    pygame.draw.line(surface, bottom_right, (x + w - 1, y + 1), (x + w - 1, y + h - 1))
+    pygame.draw.line(surface, bottom_right, (x + 1, y + h - 1), (x + w - 1, y + h - 1))
 
 
 def _bevel_rect(surface: pygame.Surface, rect: tuple[int, int, int, int], *, raised: bool = True) -> None:
@@ -179,26 +194,17 @@ def _bevel_rect(surface: pygame.Surface, rect: tuple[int, int, int, int], *, rai
     _rect_outline(surface, rect, tl, br)
 
 
-def _ring_frame(surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-    """Three concentric 1px outlines -- grey, then black, then white, from
-    the outside in -- uniformly on all four sides. The "Got it" button's
-    own style, not a directional bevel. `rect` is the outermost (grey)
-    edge; PANEL fill starts 3px in from every side."""
+def _black_ring(surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
+    """A plain 1px black outline, uniform on all four sides -- the divider
+    the Dialog and the "Got it" button each sandwich between two opposite-
+    direction bevels. All four corners are left unset (matching the
+    source, same mitered-corner finding as `_rect_outline`), not closed
+    the way a plain `pygame.draw.rect(..., width=1)` would."""
     x, y, w, h = rect
-    _rect_outline(surface, rect, BEZEL_DARK, BEZEL_DARK)
-    _rect_outline(surface, (x + 1, y + 1, w - 2, h - 2), BLACK, BLACK)
-    _rect_outline(surface, (x + 2, y + 2, w - 4, h - 4), WHITE, WHITE)
-    pygame.draw.rect(surface, PANEL, (x + 3, y + 3, w - 6, h - 6))
-
-
-def _double_rule_rect(surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-    """A single grey line and a single white line, white outermost, with a
-    1px background gap on both sides of each and before the content --
-    the status text field's and icon-grid box's own style, not a touching
-    two-tone bevel. `rect` is the outer (white) edge."""
-    x, y, w, h = rect
-    _rect_outline(surface, rect, WHITE, WHITE)
-    _rect_outline(surface, (x + 2, y + 2, w - 4, h - 4), BEZEL_DARK, BEZEL_DARK)
+    pygame.draw.line(surface, BLACK, (x + 1, y), (x + w - 2, y))
+    pygame.draw.line(surface, BLACK, (x + 1, y + h - 1), (x + w - 2, y + h - 1))
+    pygame.draw.line(surface, BLACK, (x, y + 1), (x, y + h - 2))
+    pygame.draw.line(surface, BLACK, (x + w - 1, y + 1), (x + w - 1, y + h - 2))
 
 
 # --- Chrome geometry (measured edge-by-edge -- see module docstring for
@@ -206,15 +212,19 @@ def _double_rule_rect(surface: pygame.Surface, rect: tuple[int, int, int, int]) 
 
 TITLE_BAR_RECT = (24, 5, 152, 15)
 TITLE_BAR_BEVEL_RECT = (23, 4, 154, 17)  # sunken bevel (grey TL, white BR) framing the cyan bar
-LEFT_CORNER_RECT = (4, 4, 20, 17)
-RIGHT_CORNER_RECT = (176, 4, 20, 17)
-DIALOG_RECT = (43, 57, 118, 100)
+LEFT_CORNER_RECT = (4, 4, 17, 17)
+RIGHT_CORNER_RECT = (179, 4, 17, 17)
+OUTER_BEVEL_RECT = (1, 1, 198, 198)  # raised bevel just inside the black window border
+BODY_BEVEL_RECT = (4, 23, 192, 155)  # sunken bevel framing the space between title bar and status row
+DIALOG_OUTLINE_RECT = (43, 57, 119, 101)  # black ring around the dialog
+DIALOG_BEVEL_RECT = (44, 58, 117, 99)  # raised bevel just inside that ring
 DIALOG_TITLE_BAR_RECT = (48, 62, 109, 15)
-DIALOG_TITLE_BAR_BEVEL_RECT = (47, 61, 111, 17)  # same sunken bevel, dialog's own title bar
-BUTTON_RECT = (76, 128, 56, 21)  # outer (grey) edge of the button's ring frame
-STATUS_TEXT_BOX_RECT = (2, 180, 133, 17)  # outer (white) edge
-ICON_BOX_RECT = (133, 176, 46, 22)  # outer (white) edge
-RESIZE_GRIP_RECT = (180, 178, 18, 18)
+DIALOG_TITLE_BAR_BEVEL_RECT = (47, 61, 111, 17)  # sunken bevel, same style as the main title bar's
+BUTTON_OUTLINE_RECT = (77, 129, 54, 19)  # black ring between the button's two bevels
+BUTTON_OUTER_BEVEL_RECT = (76, 128, 56, 21)  # sunken -- the well the button sits in
+BUTTON_INNER_BEVEL_RECT = (78, 130, 52, 17)  # raised -- the button itself
+STATUS_TEXT_BOX_RECT = (4, 180, 130, 17)  # sunken bevel, same style as the body/title bars
+ICON_BOX_RECT = (136, 180, 41, 17)  # sunken bevel, same style
 
 # Icon grid: pixel-verified (12 cols: 6 green + 6 red, 4 rows, 2px squares
 # on a 3px pitch), origin at the grid's own top-left cell.
@@ -223,12 +233,44 @@ ICON_GRID_COLS = 12
 ICON_GRID_ROWS = 4
 ICON_GRID_GREEN_COLS = 6
 
+# Resize grip: pixel-verified glyph (o=white, -=grey, #=black), same
+# convention as the icon glyphs above.
+RESIZE_GRIP_ORIGIN = (178, 176)
+RESIZE_GRIP_ROWS = (
+    ".................o..-#",
+    "oooooooooooooooooo..-#",
+    "....................-#",
+    "....................-#",
+    "................-...-#",
+    "...............-o...-#",
+    "..............-o....-#",
+    ".............-o.-...-#",
+    "............-o.-o...-#",
+    "...........-o.-o....-#",
+    "..........-o.-o.-...-#",
+    ".........-o.-o.-o...-#",
+    "........-o.-o.-o....-#",
+    ".......-o.-o.-o.-...-#",
+    "......-o.-o.-o.-o...-#",
+    ".....-o.-o.-o.-o....-#",
+    "....-o.-o.-o.-o.-...-#",
+    "...-o.-o.-o.-o.-o...-#",
+    "..-o.-o.-o.-o.-o....-#",
+    ".-o.-o.-o.-o.-o.....-#",
+    "....................-#",
+    "....................-#",
+    "---------------------#",
+    "#######################",
+)
+_GRIP_COLOUR = {"o": WHITE, "-": BEZEL_DARK, "#": BLACK}
 
-def _draw_resize_grip(surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-    x0, y0, w, h = rect
-    for i in range(0, max(w, h), 3):
-        pygame.draw.line(surface, WHITE, (x0 + w - 1 - i, y0 + h - 1), (x0 + w - 1, y0 + h - 1 - i))
-        pygame.draw.line(surface, BEZEL_DARK, (x0 + w - 1 - i - 1, y0 + h - 1), (x0 + w - 1, y0 + h - 1 - i - 1))
+
+def _draw_resize_grip(surface: pygame.Surface) -> None:
+    x0, y0 = RESIZE_GRIP_ORIGIN
+    for dy, row in enumerate(RESIZE_GRIP_ROWS):
+        for dx, ch in enumerate(row):
+            if ch != ".":
+                surface.set_at((x0 + dx, y0 + dy), _GRIP_COLOUR[ch])
 
 
 def _draw_icon_grid(surface: pygame.Surface) -> None:
@@ -244,7 +286,8 @@ def _render_window(dialog_open: bool) -> pygame.Surface:
     surf = pygame.Surface(WINDOW_SIZE)
     surf.fill(PANEL)
     pygame.draw.rect(surf, BLACK, (0, 0, *WINDOW_SIZE), width=1)
-    pygame.draw.rect(surf, WHITE, (1, 1, WINDOW_SIZE[0] - 2, WINDOW_SIZE[1] - 2), width=1)
+    _bevel_rect(surf, OUTER_BEVEL_RECT)  # raised -- the window's own edge, closest to the viewer
+    _bevel_rect(surf, BODY_BEVEL_RECT, raised=False)  # sunken -- the content sits inside this
 
     _bevel_rect(surf, LEFT_CORNER_RECT)
     _bevel_rect(surf, RIGHT_CORNER_RECT)
@@ -253,20 +296,23 @@ def _render_window(dialog_open: bool) -> pygame.Surface:
     _draw_glyph(surf, WINDOW_TITLE_ORIGIN, WINDOW_TITLE_ROWS, BLACK)
 
     if dialog_open:
-        pygame.draw.rect(surf, BLACK, DIALOG_RECT, width=1)
+        _bevel_rect(surf, DIALOG_BEVEL_RECT)  # raised -- the dialog floats above the body
+        _black_ring(surf, DIALOG_OUTLINE_RECT)
         _bevel_rect(surf, DIALOG_TITLE_BAR_BEVEL_RECT, raised=False)
         surf.fill(TITLE_CYAN, DIALOG_TITLE_BAR_RECT)
         _draw_glyph(surf, DIALOG_TITLE_ORIGIN, DIALOG_TITLE_ROWS, BLACK)
         _draw_glyph(surf, WELCOME_LINE1_ORIGIN, WELCOME_LINE1_ROWS, BLACK)
         _draw_glyph(surf, WELCOME_LINE2_ORIGIN, WELCOME_LINE2_ROWS, BLACK)
-        _ring_frame(surf, BUTTON_RECT)
+        _bevel_rect(surf, BUTTON_OUTER_BEVEL_RECT, raised=False)  # the well
+        _black_ring(surf, BUTTON_OUTLINE_RECT)
+        _bevel_rect(surf, BUTTON_INNER_BEVEL_RECT)  # the button itself, raised out of the well
         _draw_glyph(surf, GOT_IT_ORIGIN, GOT_IT_ROWS, BLACK)
 
-    _double_rule_rect(surf, STATUS_TEXT_BOX_RECT)
+    _bevel_rect(surf, STATUS_TEXT_BOX_RECT, raised=False)
     _draw_glyph(surf, STATUS_TEXT_ORIGIN, STATUS_TEXT_ROWS, BLACK)
-    _double_rule_rect(surf, ICON_BOX_RECT)
+    _bevel_rect(surf, ICON_BOX_RECT, raised=False)
     _draw_icon_grid(surf)
-    _draw_resize_grip(surf, RESIZE_GRIP_RECT)
+    _draw_resize_grip(surf)
     return surf
 
 
@@ -289,7 +335,7 @@ class BruceWindowsDemo(Demo):
         return pygame.Rect(self._window_pos[0] + x, self._window_pos[1] + y, w, h)
 
     def _button_screen_rect(self) -> pygame.Rect:
-        x, y, w, h = BUTTON_RECT
+        x, y, w, h = BUTTON_OUTER_BEVEL_RECT
         return pygame.Rect(self._window_pos[0] + x, self._window_pos[1] + y, w, h)
 
     def handle_event(self, event: pygame.event.Event) -> None:
