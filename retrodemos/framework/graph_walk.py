@@ -20,8 +20,13 @@ ExplosionPhase doesn't use it yet, but could adopt it later. `ChaseSnake`
 `retrodemos/demos/title_phases.py`'s SnakePhase) generalizes `Snake` the same
 way: same growing-body-then-holds-length shape, but each step is weighted
 toward a target node supplied fresh per call rather than picked uniformly at
-random, so two of them can hunt each other. Not yet ported to LED/LED II's
-own SnakePhases -- see PLAN.md's "Future framework polish".
+random, so two of them can hunt each other. `ChasePair` (also built here)
+was pulled out of Title's own `SnakePhase` once LED II's snake-chase needed
+the identical catch/win/flash bookkeeping over its own (differently-shaped)
+dot grid -- the two callers' Phases now differ only in grid shape, spawn
+positions, and timing constants, not in the chase logic itself. LED's own
+SnakePhase (the segment-graph one) hasn't been ported to a chase minigame
+yet -- worth doing next time it's touched.
 """
 
 from __future__ import annotations
@@ -106,6 +111,94 @@ class ChaseSnake(Generic[Node]):
         self.body.insert(0, self.rng.choice(candidates))
         if len(self.body) > self.max_length:
             self.body.pop()
+
+
+class ChasePair(Generic[Node]):
+    """Two `ChaseSnake`s that hunt each other's head over the same graph
+    until one catches the other (its head lands on the other's body), then
+    flashes the winner a few times before reading as finished -- the
+    reusable core of a snake-chase minigame Phase.
+
+    Pulled out of Title's `SnakePhase` (2026-08-24) once LED II's own
+    SnakePhase needed the identical catch/win/flash bookkeeping over its
+    own, differently-shaped dot grid; the graph, starting nodes, distance
+    function, and every timing constant are all caller-supplied, so this
+    doesn't assume a particular grid shape or pacing -- see
+    title_phases.py's SnakePhase and led_ii_phases.py's SnakePhase for two
+    different grids driving the same class.
+
+    Movement and flashing are paced by the caller, not internally: call
+    `step()` at whatever rate the chase should move (typically from inside
+    a `Ticker` loop, same as any other discrete-step Phase) until
+    `resolved`, then `flash_tick()` at the flash rate until `finished`.
+    `lit_cells()` gives the current cells to render: both bodies while
+    unresolved, just the winner's body while flashing on, nothing while
+    flashing off.
+    """
+
+    def __init__(
+        self,
+        graph: dict[Node, set[Node]],
+        start_a: Node,
+        start_b: Node,
+        max_length: int,
+        rng: random.Random,
+        distance: Callable[[Node, Node], float],
+        chase_chance: float,
+        max_steps: int,
+        flash_cycles: int,
+    ) -> None:
+        self.rng = rng
+        self.max_steps = max_steps
+        self.a = ChaseSnake(graph, start_a, max_length, rng, distance, chase_chance)
+        self.b = ChaseSnake(graph, start_b, max_length, rng, distance, chase_chance)
+        self.winner: ChaseSnake[Node] | None = None
+        self.steps_taken = 0
+        self.flash_on = True
+        self._flash_toggles = 0
+        self._flash_target = flash_cycles * 2  # on + off per cycle
+
+    @property
+    def resolved(self) -> bool:
+        return self.winner is not None
+
+    @property
+    def finished(self) -> bool:
+        return self.resolved and self._flash_toggles >= self._flash_target
+
+    def step(self) -> None:
+        """Advance both snakes one step. No-op once resolved -- check
+        `resolved` before calling from a tick loop, same as `flash_tick`."""
+        if self.resolved:
+            return
+        self.steps_taken += 1
+        self.a.advance(self.b.body[0])
+        self.b.advance(self.a.body[0])
+        a_caught = self.a.body[0] in self.b.body
+        b_caught = self.b.body[0] in self.a.body
+        if a_caught and b_caught:
+            self.winner = self.rng.choice([self.a, self.b])  # head-on collision: pick either
+        elif a_caught:
+            self.winner = self.a
+        elif b_caught:
+            self.winner = self.b
+        elif self.steps_taken >= self.max_steps:
+            # Safety net -- two snakes actively closing distance should
+            # always catch well before max_steps, but don't hang forever.
+            self.winner = self.rng.choice([self.a, self.b])
+
+    def flash_tick(self) -> None:
+        """Toggle the winner's blink state. No-op if not yet resolved or
+        already finished -- check `resolved`/`finished` from a tick loop."""
+        if not self.resolved or self.finished:
+            return
+        self.flash_on = not self.flash_on
+        self._flash_toggles += 1
+
+    def lit_cells(self) -> set[Node]:
+        if not self.resolved:
+            return set(self.a.body) | set(self.b.body)
+        return set(self.winner.body) if self.flash_on else set()
 
 
 def bfs_rings(graph: dict[Node, set[Node]], start: Node, max_ring: int) -> list[list[Node]]:

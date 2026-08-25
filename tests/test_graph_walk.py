@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import random
 
-from retrodemos.framework.graph_walk import Burst, ChaseSnake, Snake, bfs_rings
+from retrodemos.framework.graph_walk import Burst, ChasePair, ChaseSnake, Snake, bfs_rings
 
 
 def _grid_graph(width: int, height: int) -> dict[tuple[int, int], set[tuple[int, int]]]:
@@ -124,6 +124,79 @@ def test_chase_snake_avoids_immediately_reversing_when_another_option_exists():
     assert snake.body == [(1, 0), (0, 0)]
     snake.advance((2, 0))  # from (1,0), previous is (0,0) -- must go to (2,0)
     assert snake.body[0] == (2, 0)
+
+
+def _chase_pair(graph, start_a=(0, 0), start_b=(8, 8), max_length=20, seed=0, chase_chance=1.0, max_steps=200, flash_cycles=2):
+    return ChasePair(graph, start_a, start_b, max_length, random.Random(seed), _manhattan, chase_chance, max_steps, flash_cycles)
+
+
+def test_chase_pair_starts_unresolved_with_both_bodies_lit():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph)
+    assert not pair.resolved
+    assert not pair.finished
+    assert pair.lit_cells() == {(0, 0), (8, 8)}
+
+
+def test_chase_pair_resolves_once_a_head_lands_on_the_other_bodys():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph, chase_chance=1.0)
+    for _ in range(50):
+        if pair.resolved:
+            break
+        pair.step()
+    assert pair.resolved
+    assert pair.winner in (pair.a, pair.b)
+
+
+def test_chase_pair_stops_stepping_once_resolved():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph, chase_chance=1.0)
+    while not pair.resolved:
+        pair.step()
+    steps_at_resolution = pair.steps_taken
+    pair.step()  # no-op now
+    assert pair.steps_taken == steps_at_resolution
+
+
+def test_chase_pair_flash_tick_toggles_until_finished():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph, chase_chance=1.0, flash_cycles=2)
+    while not pair.resolved:
+        pair.step()
+    toggles = 0
+    seen_both = set()
+    while not pair.finished:
+        pair.flash_tick()
+        toggles += 1
+        seen_both.add(pair.flash_on)
+    assert toggles == 4  # 2 cycles * (on + off)
+    assert seen_both == {True, False}
+
+
+def test_chase_pair_lit_cells_only_shows_winner_while_flashing_on():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph, chase_chance=1.0)
+    while not pair.resolved:
+        pair.step()
+    assert pair.flash_on  # resolves with a visible flash
+    assert pair.lit_cells() == set(pair.winner.body)
+    pair.flash_tick()
+    assert not pair.flash_on
+    assert pair.lit_cells() == set()
+
+
+def test_chase_pair_safety_net_forces_a_winner_at_max_steps():
+    # chase_chance=0.0 means the snakes never actually pursue each other,
+    # so max_steps is what has to end the pair, not a real catch.
+    graph = _grid_graph(3, 1)
+    pair = ChasePair(
+        graph, start_a=(0, 0), start_b=(2, 0), max_length=1, rng=random.Random(0),
+        distance=_manhattan, chase_chance=0.0, max_steps=10, flash_cycles=1,
+    )
+    for _ in range(10):
+        pair.step()
+    assert pair.resolved
 
 
 def test_bfs_rings_first_ring_is_just_the_start():

@@ -2,13 +2,19 @@
 mirroring LED's own five-beat structure (led_phases.py) but reworked for a
 dot-matrix grid instead of seven-segment digits: power-up (random dot
 flicker, then a column sweep that speeds up), a smoothly-scrolling marquee,
-a "snake" that crawls the dot grid, a rippling burst that radiates outward
-and repeats, then a held "1991" credit -- then the whole thing loops.
+a snake-chase minigame across the dot grid, a rippling burst that radiates
+outward and repeats, then a held "1991" credit -- then the whole thing loops.
 
 Unlike LED's choreography, none of this comes from a specific spec of
 Bruce's for LED II; it's a deliberate structural echo of LED's script,
 confirmed with Bruce before building (2026-08-24) rather than assumed. See
 docs/led-ii.md and PLAN.md for the demo overview.
+
+SnakePhase was rebuilt 2026-08-24, porting the snake-chase minigame Title's
+own SnakePhase introduced the same day: two ChaseSnakes (graph_walk.py) hunt
+each other across the grid via a shared graph_walk.ChasePair, rather than a
+single Snake wandering at random. See SnakePhase's own docstring for the
+full rationale.
 
 Every phase's specific timings (tick durations, snake/ripple sizes, hold
 lengths) are judgement calls, tuned for this display's much larger grid
@@ -24,7 +30,7 @@ import random
 
 import pygame
 
-from retrodemos.framework.graph_walk import Burst, Snake
+from retrodemos.framework.graph_walk import Burst, ChasePair
 from retrodemos.framework.led_grid import DotMatrixDisplay, dot_grid_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
@@ -143,33 +149,74 @@ class MarqueePhase(Phase):
         self.display.render_raw(surface, window)
 
 
-class SnakePhase(Phase):
-    """A snake crawls the dot grid: grows to length 20, then keeps moving
-    at that length, reshaping as it goes -- the dot-grid counterpart of
-    LED's segment-graph snake, sized up for this display's much larger
-    grid (747 dots vs LED's ~88 segment/dot nodes). Tuned longer still on
-    request (2026-08-24): the grid has a lot of room, and a 20-long snake
-    read as too short against it."""
+def _chase_distance(a: tuple[int, int], b: tuple[int, int], x_weight: float, y_weight: float) -> float:
+    """Weighted Manhattan distance for LED II's chase: moving a step closer
+    on whichever axis has the bigger weight lowers this more, so
+    ChaseSnake's argmin favours that axis whenever it still has ground to
+    close. Same idea as Title's own `_chase_distance`, weighted milder
+    (2:1, not 4:1) since this grid's 83:9 width:height ratio is wide but
+    nowhere near Title's 32:1."""
+    return abs(a[0] - b[0]) * x_weight + abs(a[1] - b[1]) * y_weight
 
-    STEP_INTERVAL = 0.02
-    MAX_LENGTH = 35
-    STEPS = 220
+
+class SnakePhase(Phase):
+    """A chase minigame: two snakes spawn a quarter-width apart and hunt
+    each other's head across the dot grid until one catches the other,
+    flashes WIN_FLASH_CYCLES times, and hands off to the ripple burst --
+    which now reads as this chase's own finish, not just the next scripted
+    beat.
+
+    Rebuilt 2026-08-24, porting Title's snake-chase minigame pattern (a
+    plain wandering `Snake` picks its next cell uniformly at random, so its
+    net drift over a few hundred steps is a random walk's sqrt(steps) --
+    reading as wobbling in place rather than a hunt). The catch/win/flash
+    bookkeeping now lives in `graph_walk.ChasePair`, shared with Title's own
+    SnakePhase (`title_phases.py`) -- this class only supplies what's
+    specific to this grid: `_chase_distance`'s milder axis weighting (this
+    grid is wide but far more square than Title's 256x8 strip) and the
+    quarter-width spawn rule sized to 83 columns instead of 256. See
+    PLAN.md's "Future framework polish" for the porting history."""
+
+    STEP_INTERVAL = 0.025
+    MAX_LENGTH = 28
+    MAX_STEPS = 900
+    CHASE_CHANCE = 0.65
+    X_WEIGHT = 2.0
+    Y_WEIGHT = 1.0
+    WIN_FLASH_INTERVAL = 0.12
+    WIN_FLASH_CYCLES = 5
 
     def reset(self) -> None:
-        graph = dot_grid_adjacency(self.display.cols, self.display.ROWS)
-        start = self.rng.choice(list(graph.keys()))
-        self._snake = Snake(graph, start, self.MAX_LENGTH, self.rng)
-        self._ticker = Ticker(self.STEP_INTERVAL)
-        self._steps_taken = 0
+        cols, rows = self.display.cols, self.display.ROWS
+        graph = dot_grid_adjacency(cols, rows)
+
+        def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
+            return _chase_distance(a, b, self.X_WEIGHT, self.Y_WEIGHT)
+
+        left_start = (self.rng.randrange(0, cols // 4), self.rng.randrange(rows))
+        right_start = (self.rng.randrange(3 * cols // 4, cols), self.rng.randrange(rows))
+        self._pair = ChasePair(
+            graph, left_start, right_start, self.MAX_LENGTH, self.rng, distance, self.CHASE_CHANCE,
+            self.MAX_STEPS, self.WIN_FLASH_CYCLES,
+        )
+        self._step_ticker = Ticker(self.STEP_INTERVAL)
+        self._flash_ticker = Ticker(self.WIN_FLASH_INTERVAL)
 
     def update(self, dt: float) -> bool:
-        for _ in range(self._ticker.advance(dt)):
-            self._snake.advance()
-            self._steps_taken += 1
-        return self._steps_taken >= self.STEPS
+        if not self._pair.resolved:
+            for _ in range(self._step_ticker.advance(dt)):
+                self._pair.step()
+                if self._pair.resolved:
+                    break
+            return False
+        for _ in range(self._flash_ticker.advance(dt)):
+            self._pair.flash_tick()
+            if self._pair.finished:
+                break
+        return self._pair.finished
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.display.render_raw(surface, set(self._snake.body))
+        self.display.render_raw(surface, self._pair.lit_cells())
 
 
 class RipplePhase(Phase):

@@ -37,7 +37,7 @@ import random
 
 import pygame
 
-from retrodemos.framework.graph_walk import Burst, ChaseSnake
+from retrodemos.framework.graph_walk import Burst, ChasePair
 from retrodemos.framework.led_grid import DOT_FONT, GLYPH_GAP, GLYPH_H, GLYPH_W, dot_grid_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
@@ -164,19 +164,20 @@ def _chase_distance(a: tuple[int, int], b: tuple[int, int], x_weight: float, y_w
     return abs(a[0] - b[0]) * x_weight + abs(a[1] - b[1]) * y_weight
 
 
-class _ChasePair:
-    """One strip's snake-chase minigame: two ChaseSnakes spawned a good
-    distance apart (opposite quarters of the width, so there's real ground
-    to cross) that hunt each other's head every step, until one's head lands
-    on the other's body -- that one wins, flashes a few times, and the pair
-    is done. `SnakePhase` runs one of these per strip so red_green and
-    blue_cyan resolve independently, same as the plain wandering snake this
-    replaced.
+class _TitleChase:
+    """One strip's snake-chase minigame: spawns a graph_walk.ChasePair a
+    guaranteed quarter-width apart (so there's real ground to cross) and
+    paces its step/flash ticks with its own Tickers, same reason every
+    other discrete-step Phase in this file uses one -- dt varies per frame
+    and a Ticker catches up correctly on a slow one instead of silently
+    dropping steps. `SnakePhase` runs one of these per strip so red_green
+    and blue_cyan resolve independently, same as the plain wandering snake
+    this replaced.
 
-    Movement and flashing are both paced by their own `Ticker` rather than
-    stepping once per `update()` call, same reason every other discrete-step
-    Phase in this file uses one: dt varies per frame and a Ticker catches up
-    correctly on a slow one instead of silently dropping steps."""
+    The catch/win/flash bookkeeping itself lives in `graph_walk.ChasePair`,
+    shared with LED II's own SnakePhase (`led_ii_phases.py`) -- this class
+    only owns what's specific to Title: the quarter-width spawn rule and
+    the Ticker-paced stepping."""
 
     def __init__(
         self,
@@ -192,63 +193,32 @@ class _ChasePair:
         flash_interval: float,
         flash_cycles: int,
     ) -> None:
-        self.rng = rng
-        self.max_steps = max_steps
         left_start = (rng.randrange(0, width // 4), rng.randrange(rows))
         right_start = (rng.randrange(3 * width // 4, width), rng.randrange(rows))
-        self.a = ChaseSnake(graph, left_start, max_length, rng, distance, chase_chance)
-        self.b = ChaseSnake(graph, right_start, max_length, rng, distance, chase_chance)
-        self.winner: ChaseSnake | None = None
-        self.steps_taken = 0
-        self.flash_on = True
+        self.pair = ChasePair(
+            graph, left_start, right_start, max_length, rng, distance, chase_chance, max_steps, flash_cycles
+        )
         self._step_ticker = Ticker(step_interval)
         self._flash_ticker = Ticker(flash_interval)
-        self._flash_toggles = 0
-        self._flash_target = flash_cycles * 2  # on + off per cycle
-
-    @property
-    def resolved(self) -> bool:
-        return self.winner is not None
 
     @property
     def finished(self) -> bool:
-        return self.resolved and self._flash_toggles >= self._flash_target
-
-    def _step(self) -> None:
-        self.steps_taken += 1
-        self.a.advance(self.b.body[0])
-        self.b.advance(self.a.body[0])
-        a_caught = self.a.body[0] in self.b.body
-        b_caught = self.b.body[0] in self.a.body
-        if a_caught and b_caught:
-            self.winner = self.rng.choice([self.a, self.b])  # head-on collision: pick either
-        elif a_caught:
-            self.winner = self.a
-        elif b_caught:
-            self.winner = self.b
-        elif self.steps_taken >= self.max_steps:
-            # Safety net -- two snakes actively closing distance on this grid
-            # should always catch well before max_steps, but don't let a
-            # pathological case hang the phase forever.
-            self.winner = self.rng.choice([self.a, self.b])
+        return self.pair.finished
 
     def update(self, dt: float) -> None:
-        if not self.resolved:
+        if not self.pair.resolved:
             for _ in range(self._step_ticker.advance(dt)):
-                self._step()
-                if self.resolved:
+                self.pair.step()
+                if self.pair.resolved:
                     break
             return
         for _ in range(self._flash_ticker.advance(dt)):
-            self.flash_on = not self.flash_on
-            self._flash_toggles += 1
-            if self._flash_toggles >= self._flash_target:
+            self.pair.flash_tick()
+            if self.pair.finished:
                 break
 
     def lit_cells(self) -> set[tuple[int, int]]:
-        if not self.resolved:
-            return set(self.a.body) | set(self.b.body)
-        return set(self.winner.body) if self.flash_on else set()
+        return self.pair.lit_cells()
 
 
 class SnakePhase(Phase):
@@ -275,10 +245,13 @@ class SnakePhase(Phase):
     than trusting two fully random starts to land far apart) is what makes
     "far more horizontal movement" true by construction, not just likely.
 
-    This pattern (ChaseSnake, quarter-width spawns, weighted distance,
-    catch-and-flash finish) isn't ported to LED/LED II's own SnakePhases
-    yet -- worth doing next time either is touched; see PLAN.md's "Future
-    framework polish"."""
+    The catch/win/flash bookkeeping (`graph_walk.ChasePair`) is shared with
+    LED II's own SnakePhase (`led_ii_phases.py`, ported 2026-08-24); this
+    class's own `_TitleChase` wrapper covers what's Title-specific: two
+    independent pairs (one per strip) and the quarter-width spawn rule
+    tuned for this grid's 32:1 width:height ratio. LED's segment-graph
+    SnakePhase hasn't been ported to a chase minigame yet -- worth doing
+    next time it's touched; see PLAN.md's "Future framework polish"."""
 
     STEP_INTERVAL = 0.025
     MAX_LENGTH = 30
@@ -297,8 +270,8 @@ class SnakePhase(Phase):
         def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
             return _chase_distance(a, b, self.X_WEIGHT, self.Y_WEIGHT)
 
-        def make_pair() -> _ChasePair:
-            return _ChasePair(
+        def make_pair() -> _TitleChase:
+            return _TitleChase(
                 graph, width, rows, self.rng, distance, self.MAX_LENGTH, self.CHASE_CHANCE,
                 self.MAX_STEPS, self.STEP_INTERVAL, self.WIN_FLASH_INTERVAL, self.WIN_FLASH_CYCLES,
             )

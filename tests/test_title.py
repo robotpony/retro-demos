@@ -75,8 +75,8 @@ def test_scroll_phase_finishes_after_its_duration():
 def test_snake_phase_spawns_pairs_a_quarter_width_apart():
     display = TitleDisplays(256)
     phase = SnakePhase(display, random.Random(0))
-    for pair in (phase._red_green, phase._blue_cyan):
-        left_col, right_col = pair.a.body[0][0], pair.b.body[0][0]
+    for chase in (phase._red_green, phase._blue_cyan):
+        left_col, right_col = chase.pair.a.body[0][0], chase.pair.b.body[0][0]
         assert left_col < display.width // 4
         assert right_col >= 3 * display.width // 4
 
@@ -90,12 +90,12 @@ def test_snake_phase_resolves_with_a_winner_and_finishes_after_flashing():
         if phase.update(0.02):
             finished = True
             break
-        if resolved_at is None and phase._red_green.resolved and phase._blue_cyan.resolved:
+        if resolved_at is None and phase._red_green.pair.resolved and phase._blue_cyan.pair.resolved:
             resolved_at = i
     assert finished
     assert resolved_at is not None
-    assert phase._red_green.winner in (phase._red_green.a, phase._red_green.b)
-    assert phase._blue_cyan.winner in (phase._blue_cyan.a, phase._blue_cyan.b)
+    assert phase._red_green.pair.winner in (phase._red_green.pair.a, phase._red_green.pair.b)
+    assert phase._blue_cyan.pair.winner in (phase._blue_cyan.pair.a, phase._blue_cyan.pair.b)
 
 
 def test_snake_phase_grows_bodies_up_to_max_length():
@@ -105,7 +105,7 @@ def test_snake_phase_grows_bodies_up_to_max_length():
     for _ in range(2000):
         if phase.update(0.02):
             break
-        max_len_seen = max(max_len_seen, len(phase._red_green.a.body), len(phase._red_green.b.body))
+        max_len_seen = max(max_len_seen, len(phase._red_green.pair.a.body), len(phase._red_green.pair.b.body))
     assert max_len_seen == phase.MAX_LENGTH
 
 

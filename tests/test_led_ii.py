@@ -71,19 +71,39 @@ def test_powerup_phase_progresses_through_its_stages():
     assert stages_seen == {"flicker", "sweep", "blank"}
 
 
-def test_snake_phase_grows_to_max_length_then_holds():
+def test_snake_phase_spawns_a_quarter_width_apart():
     display = DotMatrixDisplay(cols=COLS)
     phase = SnakePhase(display, random.Random(0))
-    max_len_seen = 0
+    left_col, right_col = phase._pair.a.body[0][0], phase._pair.b.body[0][0]
+    assert left_col < display.cols // 4
+    assert right_col >= 3 * display.cols // 4
+
+
+def test_snake_phase_resolves_with_a_winner_and_finishes_after_flashing():
+    display = DotMatrixDisplay(cols=COLS)
+    phase = SnakePhase(display, random.Random(0))
+    resolved_at = None
     finished = False
-    for _ in range(1000):
+    for i in range(2000):
         if phase.update(0.05):
             finished = True
             break
-        max_len_seen = max(max_len_seen, len(phase._snake.body))
+        if resolved_at is None and phase._pair.resolved:
+            resolved_at = i
     assert finished
+    assert resolved_at is not None
+    assert phase._pair.winner in (phase._pair.a, phase._pair.b)
+
+
+def test_snake_phase_grows_bodies_up_to_max_length():
+    display = DotMatrixDisplay(cols=COLS)
+    phase = SnakePhase(display, random.Random(0))
+    max_len_seen = 0
+    for _ in range(2000):
+        if phase.update(0.05):
+            break
+        max_len_seen = max(max_len_seen, len(phase._pair.a.body), len(phase._pair.b.body))
     assert max_len_seen == phase.MAX_LENGTH
-    assert len(phase._snake.body) == phase.MAX_LENGTH
 
 
 def test_ripple_phase_repeats_and_finishes():
