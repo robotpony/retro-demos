@@ -12,7 +12,6 @@ from retrodemos.demos.cd_player import (
     CELL_W,
     PAUSE_DURATION,
     PAUSE_EVERY,
-    SEG_OFF,
     SEG_ON,
     TRACK_COUNT,
     TRACK_LENGTH,
@@ -25,7 +24,7 @@ def _render_text(text: str) -> pygame.Surface:
     surf = pygame.Surface((CELL_W * len(text), CELL_H))
     surf.fill((0, 0, 0))
     for i, ch in enumerate(text):
-        _draw_digit(surf, i * CELL_W, 0, ch, SEG_ON, SEG_OFF)
+        _draw_digit(surf, i * CELL_W, 0, ch, SEG_ON)
     return surf
 
 
@@ -35,31 +34,31 @@ def _lit_cols(surf: pygame.Surface, y: int) -> str:
 
 def test_digit_font_renders_one_as_just_the_right_hand_bars():
     surf = _render_text("1")
-    # top/bottom bars (rows 0, 19) and the middle bar (row 9) should be unlit
-    assert "#" not in _lit_cols(surf, 0)
-    assert "#" not in _lit_cols(surf, 9)
-    assert "#" not in _lit_cols(surf, 19)
+    # top/bottom bars (rows 1, 20) and the middle bar (row 10) should be unlit
+    assert "#" not in _lit_cols(surf, 1)
+    assert "#" not in _lit_cols(surf, 10)
+    assert "#" not in _lit_cols(surf, 20)
     # the right-hand vertical (segments b/c) should be lit somewhere in the body
     assert "#" in _lit_cols(surf, 5)
 
 
 def test_digit_font_renders_zero_with_no_middle_bar():
     surf = _render_text("0")
-    assert "#" not in _lit_cols(surf, 9)  # middle bar (g) unlit
-    assert "#" in _lit_cols(surf, 0)  # top bar (a) lit
-    assert "#" in _lit_cols(surf, 19)  # bottom bar (d) lit
+    assert "#" not in _lit_cols(surf, 10)  # middle bar (g) unlit
+    assert "#" in _lit_cols(surf, 1)  # top bar (a) lit
+    assert "#" in _lit_cols(surf, 20)  # bottom bar (d) lit
 
 
-def test_digit_font_six_and_nine_keep_the_sources_own_quirks():
-    # Measured from CDPLAYER.png directly: this font's "6" has no top bar,
-    # and "9" has no bottom bar -- not "corrected" to a textbook 7-segment
-    # shape. See cd_player.py's DIGIT_SEGMENTS.
+def test_digit_font_uses_the_standard_closed_six_and_nine():
+    # No source data exists for individual digit shapes (see cd_player.py's
+    # module docstring), so this is the conventional closed-6/closed-9
+    # form, not measured content -- 6 has a top bar, 9 has a bottom bar.
     six = _render_text("6")
-    assert "#" not in _lit_cols(six, 0)  # top bar (a) unlit
-    assert "#" in _lit_cols(six, 19)  # bottom bar (d) lit
+    assert "#" in _lit_cols(six, 1)  # top bar (a) lit
+    assert "#" in _lit_cols(six, 20)  # bottom bar (d) lit
     nine = _render_text("9")
-    assert "#" in _lit_cols(nine, 0)  # top bar (a) lit
-    assert "#" not in _lit_cols(nine, 19)  # bottom bar (d) unlit
+    assert "#" in _lit_cols(nine, 1)  # top bar (a) lit
+    assert "#" in _lit_cols(nine, 20)  # bottom bar (d) lit
 
 
 def test_space_renders_nothing_lit():

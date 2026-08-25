@@ -13,14 +13,27 @@ differently-sized captures of the same widget vocabulary (transport
 buttons, a "cd" logo, a slider bank); Band C (y56-77) is a separate
 full-width level-meter strip. Built around Band B (confirmed with Bruce,
 2026-08-24) since it's the larger, more detailed capture, and its long
-18-cell readout doubles as a segment-font calibration strip -- every
-segment shows bright green (on) or dark red (off) directly in the source,
-better ground truth than LED's own font had. Decoded as "0123456789" plus
-isolated-segment test cells; this font's own genuine quirks are kept, not
-"corrected" to a textbook shape -- **6 has no top bar**, **9 has no bottom
-bar**.
+18-cell readout doubles as a segment-shape calibration strip.
 
-- **Numeric LED readout**: pixel-verified segment font (11x21 per cell),
+A 2026-08-25 re-verification (connected-component style, same method that
+caught Bruce's Windows' bevel bugs) found the first pass had two real
+mistakes, both now fixed:
+
+- The 18-cell readout isn't a calibration strip spelling "0123456789" --
+  every cell has all seven segments lit (a segment-test pattern,
+  alternating red/green per position for visibility, matching Band A's
+  own all-lit "888"). There's no source data for individual digit shapes,
+  so the "6 has no top bar, 9 has no bottom bar" quirks the first pass
+  claimed were fabricated, not measured. The font now uses the standard
+  closed 6/9 forms instead, with the segment geometry itself (each
+  segment's exact tapered pixel shape) still pixel-measured from that
+  all-lit pattern.
+- Every box border in the source -- readout, meter, transport buttons --
+  is a flat single-tone grey outline, not a two-tone raised/sunken bevel.
+  The first pass invented a bevel that isn't there.
+
+- **Numeric LED readout**: pixel-verified segment geometry (11x21 per
+  cell, with the hexagonal tapered-end shape real LED segments have),
   single colour (Band A's own measured red), showing track number + time.
 - **Transport buttons**: all 6 icons (prev, next, stop, pause, play, close)
   pixel-verified glyphs extracted from Band B.
@@ -46,8 +59,8 @@ same reasoning Dooley's continuous design used):
   wraps to the next track, wrapping the track number after `TRACK_COUNT`
   (12).
 - Playback pauses for `PAUSE_DURATION` (3s) every `PAUSE_EVERY` (25s) of
-  play, and the transport buttons pick out "play" or "pause" (drawn sunken,
-  its icon picked out in red) to match.
+  play, and the transport buttons pick out "play" or "pause" (its icon
+  picked out in red) to match.
 - The level meter fakes a waveform (summed sine curves, invented, not a
   real audio analysis) that goes quiet while paused.
 
