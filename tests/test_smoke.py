@@ -11,7 +11,7 @@ import pygame
 from retrodemos.framework.canvas import Canvas
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.keys import handle_shared_keys
-from retrodemos.framework.runtime import run
+from retrodemos.framework.runtime import _fit_scale, run
 
 
 class _CountingDemo(Demo):
@@ -95,6 +95,20 @@ def test_canvas_scales_to_window_size():
     assert canvas.window_size == (192, 144)
     window = pygame.Surface(canvas.window_size)
     canvas.present(window)  # should not raise
+
+
+def test_fit_scale_shrinks_a_canvas_too_big_for_the_screen():
+    # The dummy driver reports a 1024x768 "screen" -- the desktop shell's
+    # 1024x576 canvas at the CLI's default scale of 3 would be 3072x1728,
+    # nowhere close to fitting, so this should fall all the way back to 1x.
+    assert _fit_scale((1024, 576), 3) == 1
+
+
+def test_fit_scale_never_exceeds_the_requested_scale():
+    # A small demo's canvas easily fits the dummy 1024x768 screen even at
+    # a large scale -- fit_scale should hand back exactly what was asked
+    # for, not grow past it.
+    assert _fit_scale((64, 48), 3) == 3
 
 
 def test_mouse_events_are_rescaled_to_native_space_before_reaching_the_demo():

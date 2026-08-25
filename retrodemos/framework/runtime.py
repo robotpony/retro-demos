@@ -38,6 +38,28 @@ def _to_native_space(event: pygame.event.Event, scale: int) -> pygame.event.Even
     return pygame.event.Event(event.type, data)
 
 
+# Rough allowance for OS chrome outside the usable desktop area (menu bar,
+# dock, taskbar) that pygame.display.Info() doesn't account for -- keeps
+# a fitted window from landing flush against the screen edge.
+_SCREEN_MARGIN = (40, 80)
+
+
+def _fit_scale(native_size: tuple[int, int], requested_scale: int) -> int:
+    """Never hand back a scale that makes the window bigger than the
+    screen -- the desktop shell's 1024x576 canvas at the CLI's default
+    scale of 3 is 3072x1728, larger than most screens outright. Shrinks
+    to the largest scale (down to 1) that still fits; never grows past
+    what was requested, so small demos keep their usual 2-3x."""
+    info = pygame.display.Info()
+    screen_w, screen_h = info.current_w, info.current_h
+    if screen_w <= 0 or screen_h <= 0:
+        return requested_scale
+    usable_w = max(1, screen_w - _SCREEN_MARGIN[0])
+    usable_h = max(1, screen_h - _SCREEN_MARGIN[1])
+    fit = min(usable_w // native_size[0], usable_h // native_size[1])
+    return max(1, min(requested_scale, fit))
+
+
 def run(
     demo: Demo,
     scale: int = 3,
@@ -51,6 +73,11 @@ def run(
     keys or window close to end the loop. Caller is responsible for
     pygame.init()/pygame.quit().
     """
+    if not fullscreen:
+        fitted = _fit_scale(demo.NATIVE_SIZE, scale)
+        if fitted != scale:
+            print(f"retrodemos: scale {scale} would not fit the screen -- using {fitted} instead.")
+        scale = fitted
     canvas = Canvas(demo.NATIVE_SIZE, scale=scale)
     # NOFRAME drops the OS title bar/border in windowed mode, so the window
     # reads as the retro program itself rather than a modern app window

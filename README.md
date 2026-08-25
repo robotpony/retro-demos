@@ -30,7 +30,7 @@ python3 -m venv .venv
 
 | Flag | Default | Description |
 |---|---|---|
-| `--scale N` | 3 | Integer scale factor from native pixel resolution to window size |
+| `--scale N` | 3 | Integer scale factor from native pixel resolution to window size. Shrunk automatically (down to 1x) if the requested scale wouldn't fit the screen -- the desktop shell's 1024x576 canvas is the common case this catches. |
 | `--fps N` | 60 | Frame rate cap |
 | `--fullscreen` | off | Run fullscreen |
 
