@@ -72,20 +72,41 @@ def test_scroll_phase_finishes_after_its_duration():
     assert finished
 
 
-def test_snake_phase_grows_both_strips_to_max_length_then_holds():
+def test_snake_phase_spawns_pairs_a_quarter_width_apart():
+    display = TitleDisplays(256)
+    phase = SnakePhase(display, random.Random(0))
+    for pair in (phase._red_green, phase._blue_cyan):
+        left_col, right_col = pair.a.body[0][0], pair.b.body[0][0]
+        assert left_col < display.width // 4
+        assert right_col >= 3 * display.width // 4
+
+
+def test_snake_phase_resolves_with_a_winner_and_finishes_after_flashing():
+    display = TitleDisplays(256)
+    phase = SnakePhase(display, random.Random(0))
+    resolved_at = None
+    finished = False
+    for i in range(4000):
+        if phase.update(0.02):
+            finished = True
+            break
+        if resolved_at is None and phase._red_green.resolved and phase._blue_cyan.resolved:
+            resolved_at = i
+    assert finished
+    assert resolved_at is not None
+    assert phase._red_green.winner in (phase._red_green.a, phase._red_green.b)
+    assert phase._blue_cyan.winner in (phase._blue_cyan.a, phase._blue_cyan.b)
+
+
+def test_snake_phase_grows_bodies_up_to_max_length():
     display = TitleDisplays(256)
     phase = SnakePhase(display, random.Random(0))
     max_len_seen = 0
-    finished = False
     for _ in range(2000):
-        if phase.update(0.05):
-            finished = True
+        if phase.update(0.02):
             break
-        max_len_seen = max(max_len_seen, len(phase._red_green_snake.body))
-    assert finished
+        max_len_seen = max(max_len_seen, len(phase._red_green.a.body), len(phase._red_green.b.body))
     assert max_len_seen == phase.MAX_LENGTH
-    assert len(phase._red_green_snake.body) == phase.MAX_LENGTH
-    assert len(phase._blue_cyan_snake.body) == phase.MAX_LENGTH
 
 
 def test_fireworks_phase_repeats_and_finishes():
@@ -99,13 +120,31 @@ def test_fireworks_phase_repeats_and_finishes():
     assert finished
 
 
-def test_words_phase_encodes_1991_as_ascii_bytes_centred_on_blank():
+def test_words_phase_renders_1991_as_actual_font_glyphs():
     display = TitleDisplays(256)
     phase = WordsPhase(display, random.Random(0))
-    assert phase.TEXT_BYTES == [ord("1"), ord("9"), ord("9"), ord("1")]
-    non_zero = [i for i, v in enumerate(phase._values) if v != 0]
-    assert [phase._values[i] for i in non_zero] == phase.TEXT_BYTES
+    assert phase.TEXT == "1991"
+    # Every lit cell must be part of some digit's actual glyph shape, not a
+    # column's raw byte value -- this is the bug the DOT_FONT rewrite fixed.
+    assert phase._cells
+    cols_used = {col for col, _ in phase._cells}
+    rows_used = {row for _, row in phase._cells}
+    assert rows_used <= set(range(display.red_green.ROWS))
     # centred: equal-ish blank margin on both sides
-    left_margin = non_zero[0]
-    right_margin = len(phase._values) - 1 - non_zero[-1]
+    left_margin = min(cols_used)
+    right_margin = display.width - 1 - max(cols_used)
     assert abs(left_margin - right_margin) <= 1
+
+
+def test_words_phase_renders_the_same_cells_on_both_strips():
+    display = TitleDisplays(256)
+    phase = WordsPhase(display, random.Random(0))
+    called = {}
+
+    def fake_render_raw(surf, red_green_cells=None, blue_cyan_cells=None):
+        called["red_green"] = red_green_cells
+        called["blue_cyan"] = blue_cyan_cells
+
+    display.render_raw = fake_render_raw
+    phase.draw(pygame.Surface((display.width, display.height)))
+    assert called["red_green"] == called["blue_cyan"] == phase._cells

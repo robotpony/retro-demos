@@ -15,14 +15,20 @@ history for why this wasn't built speculatively ahead of a second caller.
 `Burst` (built directly here, for LED II's RipplePhase) generalizes
 `bfs_rings` into an actual particle effect: per-node randomized brightness
 that fades over time, plus a scatter of extra spark nodes -- LED's own
-ExplosionPhase doesn't use it yet, but could adopt it later.
+ExplosionPhase doesn't use it yet, but could adopt it later. `ChaseSnake`
+(built directly here, for Title's snake-chase minigame -- see
+`retrodemos/demos/title_phases.py`'s SnakePhase) generalizes `Snake` the same
+way: same growing-body-then-holds-length shape, but each step is weighted
+toward a target node supplied fresh per call rather than picked uniformly at
+random, so two of them can hunt each other. Not yet ported to LED/LED II's
+own SnakePhases -- see PLAN.md's "Future framework polish".
 """
 
 from __future__ import annotations
 
 import random
 from collections import deque
-from typing import Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
 Node = TypeVar("Node")
 
@@ -45,6 +51,58 @@ class Snake(Generic[Node]):
         neighbours = list(self.graph[head])
         previous = self.body[1] if len(self.body) > 1 else None
         candidates = [n for n in neighbours if n != previous] or neighbours
+        self.body.insert(0, self.rng.choice(candidates))
+        if len(self.body) > self.max_length:
+            self.body.pop()
+
+
+class ChaseSnake(Generic[Node]):
+    """Like `Snake` (same growing-then-holding body, same never-immediately-
+    reverse rule), but `advance()` takes a `target` node each call and
+    weights its step toward closing distance on it, rather than choosing
+    uniformly at random -- built for a chase minigame where two of these
+    hunt each other's head.
+
+    `distance` is caller-supplied so ChaseSnake stays agnostic about what a
+    Node actually is, the same way `Snake`/`bfs_rings`/`Burst` don't know
+    whether they're walking a segment graph or a dot grid: pass a function
+    that scores how far a candidate node is from the target, weighted
+    however suits that graph's shape (Title's SnakePhase weighs its x-axis
+    heavier than its y-axis, since its grid is 256 columns by 8 rows and an
+    unweighted chase would zigzag vertically as often as it closed
+    horizontal ground -- see title_phases.py's `_chase_distance`).
+
+    `chase_chance` (0..1) is how often a step is actually chosen by the
+    distance weighting; the rest of the time it falls back to `Snake`'s
+    plain random choice among the same candidates, so the pursuit reads as
+    a hunt with some wander in it rather than a laser-guided missile beelining
+    straight at its target every single step.
+    """
+
+    def __init__(
+        self,
+        graph: dict[Node, set[Node]],
+        start: Node,
+        max_length: int,
+        rng: random.Random,
+        distance: Callable[[Node, Node], float],
+        chase_chance: float = 0.85,
+    ) -> None:
+        self.graph = graph
+        self.max_length = max_length
+        self.rng = rng
+        self.distance = distance
+        self.chase_chance = chase_chance
+        self.body: list[Node] = [start]
+
+    def advance(self, target: Node) -> None:
+        head = self.body[0]
+        neighbours = list(self.graph[head])
+        previous = self.body[1] if len(self.body) > 1 else None
+        candidates = [n for n in neighbours if n != previous] or neighbours
+        if self.rng.random() < self.chase_chance:
+            best = min(self.distance(n, target) for n in candidates)
+            candidates = [n for n in candidates if self.distance(n, target) == best]
         self.body.insert(0, self.rng.choice(candidates))
         if len(self.body) > self.max_length:
             self.body.pop()

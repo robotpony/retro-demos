@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import random
 
-from retrodemos.framework.graph_walk import Burst, Snake, bfs_rings
+from retrodemos.framework.graph_walk import Burst, ChaseSnake, Snake, bfs_rings
 
 
 def _grid_graph(width: int, height: int) -> dict[tuple[int, int], set[tuple[int, int]]]:
@@ -64,6 +64,65 @@ def test_snake_avoids_immediately_reversing_when_another_option_exists():
     snake.advance()  # body: [(1,0), (0,0)]
     assert snake.body == [(1, 0), (0, 0)]
     snake.advance()  # from (1,0), previous is (0,0) -- must go to (2,0)
+    assert snake.body[0] == (2, 0)
+
+
+def _manhattan(a: tuple[int, int], b: tuple[int, int]) -> float:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def test_chase_snake_grows_up_to_max_length_then_holds():
+    graph = _grid_graph(9, 9)
+    snake = ChaseSnake(graph, start=(0, 0), max_length=3, rng=random.Random(0), distance=_manhattan)
+    for _ in range(10):
+        snake.advance((8, 8))
+        assert len(snake.body) <= 3
+    assert len(snake.body) == 3
+
+
+def test_chase_snake_stays_on_graph_edges():
+    graph = _grid_graph(9, 9)
+    snake = ChaseSnake(graph, start=(0, 0), max_length=4, rng=random.Random(1), distance=_manhattan)
+    for _ in range(20):
+        snake.advance((8, 8))
+        for a, b in zip(snake.body, snake.body[1:]):
+            assert b in graph[a], f"{a} -> {b} isn't an edge in the graph"
+
+
+def test_chase_snake_with_full_chase_chance_always_closes_distance_on_target():
+    # chase_chance=1.0 makes every step a greedy best-move, so distance to a
+    # stationary target should never increase.
+    graph = _grid_graph(9, 9)
+    snake = ChaseSnake(graph, start=(0, 0), max_length=20, rng=random.Random(2), distance=_manhattan, chase_chance=1.0)
+    target = (8, 8)
+    previous_distance = _manhattan(snake.body[0], target)
+    for _ in range(16):
+        snake.advance(target)
+        distance = _manhattan(snake.body[0], target)
+        assert distance <= previous_distance
+        previous_distance = distance
+    assert snake.body[0] == target
+
+
+def test_chase_snake_with_zero_chase_chance_behaves_like_plain_random_walk():
+    # chase_chance=0.0 should never prefer the target -- just confirm it
+    # still produces a valid walk (an unbiased Snake's own tests already
+    # cover the "stays on graph edges" / "avoids reversing" behaviour this
+    # shares via the same candidate-selection logic).
+    graph = _grid_graph(9, 9)
+    snake = ChaseSnake(graph, start=(4, 4), max_length=5, rng=random.Random(3), distance=_manhattan, chase_chance=0.0)
+    for _ in range(20):
+        snake.advance((0, 0))
+        for a, b in zip(snake.body, snake.body[1:]):
+            assert b in graph[a]
+
+
+def test_chase_snake_avoids_immediately_reversing_when_another_option_exists():
+    graph = _grid_graph(3, 1)
+    snake = ChaseSnake(graph, start=(0, 0), max_length=2, rng=random.Random(0), distance=_manhattan, chase_chance=0.0)
+    snake.advance((2, 0))  # body: [(1,0), (0,0)]
+    assert snake.body == [(1, 0), (0, 0)]
+    snake.advance((2, 0))  # from (1,0), previous is (0,0) -- must go to (2,0)
     assert snake.body[0] == (2, 0)
 
 
