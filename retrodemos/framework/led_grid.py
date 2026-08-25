@@ -1,8 +1,8 @@
 """Cell-grid rendering shared by the LED-family demos (LED, LED II, Title,
 Dooley -- see PLAN.md's "LED grid module" section): the seven-segment digit
 renderer (`SevenSegmentDisplay`, LED's), the dot-matrix renderer
-(`DotMatrixDisplay`, LED II's), and the bit-column renderer
-(`BitColumnDisplay`, Title's).
+(`DotMatrixDisplay`, LED II's), the bit-column renderer (`BitColumnDisplay`,
+Title's), and the bevelled-cell renderer (`BevelCellDisplay`, Dooley's).
 
 Every renderer's geometry and colours were reverse-engineered pixel-by-pixel
 from its source screenshot (`images/LED-thumb.png`, `images/LED-II-thumb.png`,
@@ -23,13 +23,19 @@ has no bezel, no gap between columns (unlike DotMatrixDisplay's dots, gapped
 on both axes), and content that's directly computable from a byte value
 rather than drawn from a font -- different enough pixel-for-pixel that
 extending DotMatrixDisplay would have meant bending its dot-grid model
-around a shape it doesn't describe. Dooley's colour side-column is still an
-open question for whether it fits DotMatrixDisplay or needs its own renderer
-too; decide that when building it, from its own source image, not by
-assumption from Title's outcome.
+around a shape it doesn't describe. Dooley didn't fit either existing
+renderer once measured (see `docs/dooley.md`): `DOOLEY1.png` turned out to
+be a Windows 3.1-style colour-picker dialog, not just an LED strip with a
+side column, and its LED-style scrolling strip and its colour-palette
+column share a pixel model neither `DotMatrixDisplay` nor `BitColumnDisplay`
+has -- each cell is its own small bevelled 3D button (a 1px bevel border on
+all four sides around a 2x2 fill centre), not dots on a shared bezel or
+columns with none at all. `BevelCellDisplay` covers both regions.
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 import pygame
 
@@ -487,3 +493,91 @@ class BitColumnDisplay:
             for x in range(self.width):
                 color = lerp_color(self.off_color, self.on_color, intensity.get((x, row), 0.0))
                 surface.set_at((x, y), color)
+
+
+class CellFill(NamedTuple):
+    """What one BevelCellDisplay cell shows inside its bevel border: a
+    solid colour (`primary`, `secondary=None`), a checkerboard dither of two
+    colours (`primary` on the main diagonal, `secondary` on the anti-
+    diagonal -- matches DOOLEY1.png's own dark/bright dither swatches
+    exactly, verified pixel-for-pixel), or nothing (`primary=None`, still
+    draws the bevel border, just leaves the centre at BEZEL_CORNER like an
+    empty cell). `sunken` flips the bevel from raised (BEZEL_DARK top/left,
+    BEZEL_LIGHT bottom/right -- reads as a button raised toward you) to
+    sunken (colours swapped -- reads as pressed in); DOOLEY1.png's palette
+    column shows both in the same frame (see BevelCellDisplay's docstring),
+    so this is per-cell, not a display-wide setting.
+    """
+
+    primary: tuple[int, int, int] | None = None
+    secondary: tuple[int, int, int] | None = None
+    sunken: bool = False
+
+
+class BevelCellDisplay:
+    """A grid of individually-bevelled 4x4 cells, reverse-engineered from
+    DOOLEY1.png (see docs/pixel-archaeology.md and docs/dooley.md): each
+    cell is its own small raised or sunken 3D button (a 1px bevel border on
+    all four sides, a 2x2 fill centre), not dots on a shared bezel the way
+    DotMatrixDisplay draws around its whole strip, or columns with no bezel
+    at all the way BitColumnDisplay's are. Adjacent cells' bevels touch
+    directly -- no gap between cells, same as BitColumnDisplay, different
+    from DotMatrixDisplay's 1px dot-to-dot gap.
+
+    Two regions of DOOLEY1.png turned out to share this exact tile once
+    measured, despite looking different at a glance: the LED-style
+    scrolling strip (33x6 cells, shown fully lit in the source -- content
+    invented at build time, same as LED II's dot matrix) and the colour-
+    palette column (3x14 cells, a fixed mirrored dark/dither/bright rainbow
+    reference chart). Both were verified byte-exact against DOOLEY1.png via
+    reconstruct-and-diff, not assumed from the visual similarity alone; see
+    dooley.py/dooley_phases.py for how each is driven.
+
+    Unlike the LED-family's other displays, this one's background is
+    Windows 3.1 button-face grey (BEZEL_CORNER), not black -- DOOLEY1.png is
+    a desktop app window, not a physical LED panel with a black bezel.
+    """
+
+    CELL = 4
+
+    def __init__(self, cols: int, rows: int) -> None:
+        self.cols = cols
+        self.rows = rows
+        self.width = cols * self.CELL
+        self.height = rows * self.CELL
+
+    def render_raw(self, surface: pygame.Surface, fills: dict[tuple[int, int], CellFill]) -> None:
+        """Draw every (col, row) cell in the grid; a cell absent from
+        `fills` renders as an empty raised bevel (CellFill())."""
+        surface.fill(BEZEL_CORNER)
+        for row in range(self.rows):
+            for col in range(self.cols):
+                self._draw_cell(surface, col, row, fills.get((col, row), CellFill()))
+
+    def _draw_cell(self, surface: pygame.Surface, col: int, row: int, fill: CellFill) -> None:
+        x0, y0 = col * self.CELL, row * self.CELL
+        lo, hi = (BEZEL_LIGHT, BEZEL_DARK) if fill.sunken else (BEZEL_DARK, BEZEL_LIGHT)
+        # Top/left bevel edge (measured: 3px lo across the top with the 4th
+        # left as background corner; lo continues down the left edge for
+        # the two fill rows).
+        for dx in range(3):
+            surface.set_at((x0 + dx, y0), lo)
+        surface.set_at((x0 + 3, y0), BEZEL_CORNER)
+        for dy in (1, 2):
+            surface.set_at((x0, y0 + dy), lo)
+        # 2x2 fill centre: solid if secondary is None, else a checkerboard
+        # dither (primary on the main diagonal, secondary on the anti-
+        # diagonal -- see CellFill's docstring).
+        for fy in (0, 1):
+            for fx in (0, 1):
+                if fill.secondary is not None:
+                    colour = fill.primary if fx == fy else fill.secondary
+                else:
+                    colour = fill.primary if fill.primary is not None else BEZEL_CORNER
+                surface.set_at((x0 + 1 + fx, y0 + 1 + fy), colour)
+        # Bottom/right bevel edge, mirrors the top/left construction.
+        for dy in (1, 2):
+            surface.set_at((x0 + 3, y0 + dy), hi)
+        surface.set_at((x0, y0 + 3), BEZEL_CORNER)
+        for dx in (1, 2, 3):
+            surface.set_at((x0 + dx, y0 + 3), hi)
