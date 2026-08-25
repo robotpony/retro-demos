@@ -32,6 +32,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 - **Cinqtris** is the one automated demo with a single interactive control: its "MADMAX" cell is a button that opens an About popup.
 - README priority 2 (shared CLI and keybindings) is designed in `PLAN.md`: a single launcher (`python -m retrodemos <name>`) owns argument parsing, and Esc/Q, Space, and R are handled once for every demo.
 - The LED framework's scope (shared by LED, LED II, and Title) is settled in `PLAN.md`: it owns both the grid renderer and the common scroll/cycle content helpers.
+- End state (logged 2026-08-24, not scheduled -- see `PLAN.md`'s "Future: the unified desktop"): every demo above eventually runs as its own window inside Bruce's Windows' desktop chrome, not as a standalone `python -m retrodemos <name>` launch. Deferred until every demo in this table is built.
 
 ## Open questions
 

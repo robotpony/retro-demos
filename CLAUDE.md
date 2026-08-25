@@ -40,10 +40,11 @@ Extracting a demo's exact pixel font/grid from its source image is its own worke
 
 1. Mini-spec per demo in `docs/<name>.md`. Done.
 2. Shared interface design. Done — see `PLAN.md`.
-3. Build and iterate on each demo, timeboxed to 1 day per demo, in the order in `PLAN.md`'s "Build order" table. In progress — LED done, LED II next.
+3. Build and iterate on each demo, timeboxed to 1 day per demo, in the order in `PLAN.md`'s "Build order" table. In progress — LED, LED II, and Title done; CD Player next.
 4. Polish pass on each demo, timeboxed to +1 day per demo.
-5. Add an `index.html` that highlights the demos, similar to `~/projects/peep --preview`'s format.
-6. Document and publish to GitHub.
-7. Write a retrospective/nostalgia post about the project.
+5. The unified desktop (end state, not scheduled — see `PLAN.md`'s "Future: the unified desktop"): every demo eventually runs as its own window inside Bruce's Windows' desktop chrome, rather than staying a standalone `python -m retrodemos <name>` launch. Deferred until every demo above is built.
+6. Add an `index.html` that highlights the demos, similar to `~/projects/peep --preview`'s format.
+7. Document and publish to GitHub.
+8. Write a retrospective/nostalgia post about the project.
 
 Check `demos.md` for per-demo status (Spec/Build columns) before starting work on a specific demo.

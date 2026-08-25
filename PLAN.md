@@ -133,6 +133,18 @@ Dooley (originally slotted at order 4, "same framework, two content streams") wa
 
 Bruce's 21's slot wasn't explicit in the "simplest first" decision; it's placed by complexity (sprite art plus multi-phase cycling, no interaction) between Cinqtris and Tank Status Window. Move it if you'd rather it come earlier.
 
+## Future: the unified desktop (end state)
+
+Logged on request (2026-08-24), not scheduled against the build order above -- it needs every other demo built first. The end state of this project isn't eight standalone programs each launched with `python -m retrodemos <name>`; it's all of them running as windows inside one desktop, using Bruce's Windows' own chrome (`docs/bruces-windows.md`, `WINDOW1.png`) as the desktop shell. Picture Bruce's actual early-90s desktop: LED, LED II, Title, CD Player, Cinqtris, Bruce's 21, and Tank Status Window each in their own window, all running their attract-mode loops at once, the way several little utility programs might genuinely have been left open together.
+
+This changes Bruce's Windows' own role: `docs/bruces-windows.md` currently describes it as "the reference for the shared UI chrome," a single title bar + dialog + status bar demo. It becomes the container demo instead (or in addition) -- a `python -m retrodemos desktop`-style mode (exact launch mechanism undecided) that composites every other demo's own `Demo.draw()` onto one canvas, each behind its own draggable Bruce's-Windows-style title bar.
+
+Open questions, all deferred until the individual demos are done:
+- Does each demo run at its own native resolution inside a same-sized window, or get uniformly scaled to fit the desktop?
+- Do the shared quit/pause/restart keybindings (`framework/keys.py`) apply per-window (focused window only) or globally to every window at once?
+- Is this a new launch mode of the existing CLI, or its own demo entry (`desktop.py`) that happens to embed the others?
+- Window chrome is currently deliberately *not* shared (`PLAN.md`'s "Window chrome" section) since only Bruce's Windows needed it; a desktop hosting every demo is the "fourth chrome-bearing demo" that section already flags as the trigger to revisit that decision.
+
 Per README priorities 3 and 4, each demo gets up to 1 day to build and iterate, plus up to 1 more day to polish. That's a ceiling, not a target. The framework itself isn't covered by that timebox; budget it separately since every demo depends on it being right.
 
 ## Testing
