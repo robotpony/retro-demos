@@ -2,7 +2,7 @@
 
 **Source:** `WINDOW1.png`
 **Mode:** Functionally interactive (exception to the automated-only rule; this is the reference for the shared UI chrome)
-**Build:** Done (`retrodemos/demos/bruces_windows.py`) -- chrome is byte-exact against the source (see "What it shows" below)
+**Build:** Done (`retrodemos/demos/bruces_windows.py`) -- chrome is byte-exact against the source (see "What it shows" below); its reusable bevel primitives now live in `framework/window_chrome.py`
 
 ## Two window archetypes, one screenshot
 
@@ -23,8 +23,10 @@ Reviewed carefully on request (2026-08-25) with an eye toward reusable building 
 - The "Got it" button nests the *same* raised-inside-sunken pattern the dialog itself uses: a sunken bevel (the well), a black ring, then a raised bevel (the button face) -- not the uniform three-colour "ring frame" an earlier pass guessed
 
 **The chrome is built from just two primitives**, not a different style per element:
-- A single 1px bevel (`_bevel_rect`): white top/left + grey bottom/right for raised, swapped for sunken. Every bordered element above uses this, including the status text field and icon grid (an earlier pass guessed a "double rule with a gap" for those; it's the exact same touching bevel as everything else).
-- A plain black divider ring (`_black_ring`), used only between the Dialog's and the button's two opposite-direction bevels.
+- A single 1px bevel (`bevel_rect`): white top/left + grey bottom/right for raised, swapped for sunken. Every bordered element above uses this, including the status text field and icon grid (an earlier pass guessed a "double rule with a gap" for those; it's the exact same touching bevel as everything else).
+- A plain black divider ring (`black_ring`), used only between the Dialog's and the button's two opposite-direction bevels.
+
+Both now live in `framework/window_chrome.py` (moved 2026-08-25, once the desktop shell -- `PLAN.md`'s "Future: the unified desktop" -- became a second real caller for them), alongside a new generic `render_window_chrome()` that wraps *any* demo's content in the lighter Dialog archetype plus a close button (new, not in the source -- WINDOW1.png's own Dialog has no close control) and a title drawn in a new hand-built pixel alphabet (`framework/pixel_font.py`, since the source only ever shows the fixed strings "Window Title"/"Dialog", not a usable A-Z set).
 
 One more finding that took two passes to catch: every outline is **mitered, not closed** -- at the two corners where an element's two bevel colours would collide (top-right, bottom-left), the source leaves the pixel unset (background shows through) rather than picking one colour to win. A naive closed rectangle draws both of those corners wrong.
 
@@ -38,21 +40,20 @@ Windows 3.1-style chrome: a title bar reading "Window Title," a "Dialog" box tit
 
 ## Behaviour
 
-Renders the window and dialog on load. No auto-looping animation. The demo's canvas (320x240) is larger than the window itself (200x200) so there's visible room to drag it around; the rest of the canvas is a plain invented desktop-teal backdrop (`WINDOW1.png` shows only the window, no surrounding desktop).
+Renders the window and dialog on load. No auto-looping animation. Runs at a plain 200x200 (`WINDOW_SIZE`) -- this demo used to own a bigger 320x240 canvas with its own internal draggable-window simulation, but that moved to `framework/window_chrome.py` as the desktop shell's own generic responsibility (2026-08-25) once the desktop's spec was settled; see "Assets" below.
 
 ## Interaction
 
-- Title bar is draggable (clamped to the canvas bounds).
 - "Got it" button closes the dialog; once closed it stays closed until `R` (restart).
+- No drag when launched standalone (`python -m retrodemos bruces_windows`) -- opened from the eventual desktop shell, it gets the same draggable/closable chrome every other demo's window does, via `framework/window_chrome.py`'s generic wrapper.
 
-Needed `framework/runtime.py`'s new mouse-coordinate rescaling (added the same day, see its own docstring) -- the first demo that needed mouse events at all; every future interactive demo (Cinqtris's About button next) gets it for free.
+`framework/runtime.py`'s mouse-coordinate rescaling (added building this demo, see its own docstring) was the first demo that needed mouse events at all; every interactive demo since (and the desktop shell) gets it for free.
 
 ## Assets
 
-Custom-drawn chrome to match `WINDOW1.png`. Per `PLAN.md`, this chrome is not extracted into the shared framework yet; CD Player and Tank Status Window draw their own window-style borders independently. The two border-style helpers (`_bevel_rect`, `_black_ring`) are written generically enough to lift into `framework/` once a second window-drawing demo needs them -- not done speculatively ahead of that, same reasoning `graph_walk.py`'s primitives were each pulled out only once a second real caller needed the identical logic.
+Custom-drawn chrome to match `WINDOW1.png`, reverse-engineered here first. The two border-style primitives (`bevel_rect`, `black_ring`) and the generic `render_window_chrome()` wrapper now live in `framework/window_chrome.py` (moved 2026-08-25, once the desktop shell became a second real caller for the same bevel logic -- same reasoning `graph_walk.py`'s primitives were each pulled out only once a second real caller needed the identical logic). `bruces_windows.py` keeps its own pixel-verified text-glyph tables and `_render_window()` (this exhibit's exact screenshot layout, which the generic wrapper doesn't reproduce) plus the "Got it" interactivity, which is this exhibit's own content, not chrome.
 
 ## Open questions
 
-- Scope of interactivity beyond drag and "Got it" (e.g. a working close/minimize box, whether the dialog is modal) is unspecified. Treat drag + "Got it" as the baseline -- built exactly that and nothing more.
-- Whether/when to extract the Main-Window-vs-Dialog archetype split and the two border-style helpers into a reusable `framework/` module is undecided -- see "Assets" above and `PLAN.md`'s "Future: the unified desktop" section. The desktop shell itself is explicitly TBD.
-- This demo's role is expected to grow: see `PLAN.md`'s "Future: the unified desktop (end state)" section (logged 2026-08-24) -- Bruce's Windows' chrome becomes the desktop shell that every other demo eventually runs inside, as its own window, rather than staying a single title-bar-plus-dialog demo forever. Not scheduled yet; every other demo needs to be built first.
+- Scope of interactivity beyond "Got it" (e.g. a working close/minimize box, whether the dialog is modal) is unspecified. Treat "Got it" as the baseline for this exhibit's own content -- drag/close are now the desktop shell's job, not this demo's.
+- This demo's role has already started to change: see `PLAN.md`'s "Future: the unified desktop (end state)" section (spec settled 2026-08-25) -- Bruce's Windows becomes the root interface of `retrodemos` itself (a 1024x576 icon-driven desktop), and this file's own exhibit becomes just one of the icons you can open from it, not the whole experience. The desktop shell itself (icon rendering, click handling, multi-demo embedding, `__main__.py` wiring) isn't built yet.

@@ -53,9 +53,20 @@ The status bar's own green/red icon grid (12x4 cells, 2px squares on a
 3px pitch) and the resize grip (`RESIZE_GRIP_ROWS`) are both pixel-verified
 glyphs too, same as the text.
 
-Dragging needs `framework/runtime.py`'s new mouse-coordinate rescaling
-(added the same day this demo was built, see its own docstring) -- the
-first demo that needed mouse events at all.
+This demo used to own a bigger (320x240) canvas and its own title-bar-drag
+logic, simulating a tiny one-window desktop by itself. Simplified back down
+to a plain 200x200 static render (2026-08-25) once `framework/window_chrome.py`
+took over dragging generically for every window the real desktop shell
+opens (`PLAN.md`'s "Future: the unified desktop") -- this demo is now just
+one exhibit among the desktop's windows, the same as any other, wrapped in
+that shared chrome rather than building its own. `_bevel_rect`/`_black_ring`
+moved there too, once the desktop became a second real caller for the same
+primitives (still exposed here for the reconstruct-and-diff test, which
+composes them the way this file's own screenshot layout does -- a shape
+`window_chrome.render_window_chrome`'s generic wrapper doesn't reproduce,
+so this file keeps `_render_window` rather than routing through it). The
+"Got it" button still closes the dialog; that's this exhibit's own content,
+not chrome, so it stays here.
 """
 
 from __future__ import annotations
@@ -63,18 +74,14 @@ from __future__ import annotations
 import pygame
 
 from retrodemos.framework.demo import Demo
+from retrodemos.framework.window_chrome import BEZEL_DARK, BLACK, PANEL, TITLE_CYAN, WHITE
+from retrodemos.framework.window_chrome import bevel_rect as _bevel_rect
+from retrodemos.framework.window_chrome import black_ring as _black_ring
 
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-BEZEL_DARK = (128, 128, 128)
-PANEL = (192, 192, 192)
-TITLE_CYAN = (0, 191, 191)
 GREEN_ON = (0, 255, 0)
 RED_ON = (191, 0, 0)
-DESKTOP_BG = (0, 128, 128)  # invented -- WINDOW1.png shows only the window itself, no desktop backdrop
 
 WINDOW_SIZE = (200, 200)
-CANVAS_SIZE = (320, 240)
 
 # --- Pixel-verified text labels: each is the literal set of black pixels
 # within its tight bounding box in WINDOW1.png, at (origin) within the
@@ -170,41 +177,6 @@ def _draw_glyph(surface: pygame.Surface, origin: tuple[int, int], rows: tuple[st
         for dx, ch in enumerate(row):
             if ch == "#":
                 surface.set_at((x0 + dx, y0 + dy), colour)
-
-
-def _rect_outline(surface: pygame.Surface, rect: tuple[int, int, int, int], top_left: tuple[int, int, int], bottom_right: tuple[int, int, int]) -> None:
-    """One 1px outline: `top_left` on the top+left edges, `bottom_right` on
-    the bottom+right edges, mitered rather than closed -- measured against
-    the source (2026-08-25): the top-right and bottom-left corners (where
-    the two colours would otherwise collide) are left unset, showing
-    whatever's underneath, while the top-left and bottom-right corners
-    (each touched by only one colour) are filled in normally."""
-    x, y, w, h = rect
-    pygame.draw.line(surface, top_left, (x, y), (x + w - 2, y))
-    pygame.draw.line(surface, top_left, (x, y), (x, y + h - 2))
-    pygame.draw.line(surface, bottom_right, (x + w - 1, y + 1), (x + w - 1, y + h - 1))
-    pygame.draw.line(surface, bottom_right, (x + 1, y + h - 1), (x + w - 1, y + h - 1))
-
-
-def _bevel_rect(surface: pygame.Surface, rect: tuple[int, int, int, int], *, raised: bool = True) -> None:
-    """A simple 1px bevel: white top/left + grey bottom/right for raised
-    (the corner boxes), swapped for sunken. Filled with PANEL first."""
-    pygame.draw.rect(surface, PANEL, rect)
-    tl, br = (WHITE, BEZEL_DARK) if raised else (BEZEL_DARK, WHITE)
-    _rect_outline(surface, rect, tl, br)
-
-
-def _black_ring(surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-    """A plain 1px black outline, uniform on all four sides -- the divider
-    the Dialog and the "Got it" button each sandwich between two opposite-
-    direction bevels. All four corners are left unset (matching the
-    source, same mitered-corner finding as `_rect_outline`), not closed
-    the way a plain `pygame.draw.rect(..., width=1)` would."""
-    x, y, w, h = rect
-    pygame.draw.line(surface, BLACK, (x + 1, y), (x + w - 2, y))
-    pygame.draw.line(surface, BLACK, (x + 1, y + h - 1), (x + w - 2, y + h - 1))
-    pygame.draw.line(surface, BLACK, (x, y + 1), (x, y + h - 2))
-    pygame.draw.line(surface, BLACK, (x + w - 1, y + 1), (x + w - 1, y + h - 2))
 
 
 # --- Chrome geometry (measured edge-by-edge -- see module docstring for
@@ -317,46 +289,31 @@ def _render_window(dialog_open: bool) -> pygame.Surface:
 
 
 class BruceWindowsDemo(Demo):
-    NATIVE_SIZE = CANVAS_SIZE
+    """The exhibit itself: a plain, static 200x200 render of `WINDOW1.png`,
+    with only the "Got it" button live (closes the dialog). No drag, no
+    window-within-a-window canvas -- see the module docstring for why that
+    moved to `framework/window_chrome.py` as the desktop shell's own
+    generic responsibility. Launched standalone (`python -m retrodemos
+    bruces_windows`) it just sits there at native size; opened from the
+    desktop it gets the same draggable/closable chrome every other demo's
+    window does.
+    """
+
+    NATIVE_SIZE = WINDOW_SIZE
 
     def __init__(self, *, text: str | None = None, **_ignored) -> None:
         self.reset()
 
     def reset(self) -> None:
-        self._window_pos = [
-            (CANVAS_SIZE[0] - WINDOW_SIZE[0]) // 2,
-            (CANVAS_SIZE[1] - WINDOW_SIZE[1]) // 2,
-        ]
         self._dialog_open = True
-        self._dragging = False
-
-    def _title_bar_screen_rect(self) -> pygame.Rect:
-        x, y, w, h = TITLE_BAR_RECT
-        return pygame.Rect(self._window_pos[0] + x, self._window_pos[1] + y, w, h)
-
-    def _button_screen_rect(self) -> pygame.Rect:
-        x, y, w, h = BUTTON_OUTER_BEVEL_RECT
-        return pygame.Rect(self._window_pos[0] + x, self._window_pos[1] + y, w, h)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self._dialog_open and self._button_screen_rect().collidepoint(event.pos):
+            if self._dialog_open and pygame.Rect(*BUTTON_OUTER_BEVEL_RECT).collidepoint(event.pos):
                 self._dialog_open = False
-            elif self._title_bar_screen_rect().collidepoint(event.pos):
-                self._dragging = True
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self._dragging = False
-        elif event.type == pygame.MOUSEMOTION and self._dragging:
-            self._window_pos[0] += event.rel[0]
-            self._window_pos[1] += event.rel[1]
-            max_x = CANVAS_SIZE[0] - WINDOW_SIZE[0]
-            max_y = CANVAS_SIZE[1] - WINDOW_SIZE[1]
-            self._window_pos[0] = max(0, min(max_x, self._window_pos[0]))
-            self._window_pos[1] = max(0, min(max_y, self._window_pos[1]))
 
     def draw(self, surface: pygame.Surface) -> None:
-        surface.fill(DESKTOP_BG)
-        surface.blit(_render_window(self._dialog_open), self._window_pos)
+        surface.blit(_render_window(self._dialog_open), (0, 0))
 
 
 DEMO_CLASS = BruceWindowsDemo
