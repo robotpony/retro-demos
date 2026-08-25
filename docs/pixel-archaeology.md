@@ -2,8 +2,8 @@
 
 How to reverse-engineer a source screenshot (`images/*.png`) into exact,
 verifiable rendering code. Worked out building the LED demo's seven-segment
-font; the same method applies to LED II, Title, and Dooley, since they're
-each their own pixel font/grid extracted from a source image the same way.
+font; the same method applies to LED II and Title, since they're each their
+own pixel font/grid extracted from a source image the same way.
 
 ## Environment setup (pygame-ce, headless)
 

@@ -4,7 +4,7 @@
 LED's phases (tests/test_led.py) exercise both indirectly through real
 choreography; these tests cover the base class and sequencer contracts on
 their own, since they're meant to be reused by any future demo with a
-scripted, looping sequence (Dooley, Bruce's 21, Tank Status Window -- see
+scripted, looping sequence (Bruce's 21, Tank Status Window -- see
 PLAN.md).
 """
 

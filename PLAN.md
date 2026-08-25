@@ -23,7 +23,6 @@ retro-demos/
       led.py
       led_ii.py
       title.py
-      dooley.py
       cd_player.py
       bruces_windows.py
       cinqtris.py
@@ -94,20 +93,19 @@ A demo can be a single continuous behaviour, or a scripted sequence of stages th
 - `Phase`: one stage. `update(dt) -> bool` returns True when the stage is finished, `draw(surface)` renders it, `reset()` sets it up to run (called once on construction, and again every time the sequence is about to run it).
 - `PhaseSequence`: the sequencer. Takes a list of `Phase`s, tracks the current index, and drives it: `update`/`draw` delegate to the current phase, and when a phase's `update` returns True, `PhaseSequence` advances to the next one (looping back to the first after the last) and calls its `reset()`.
 
-A scripted demo builds its phase list once, in its own `__init__`, wraps it in a `PhaseSequence`, and delegates its own `update`/`draw`/`reset` to that sequence — the demo class itself carries no phase-index bookkeeping (see `LedDemo` in `retrodemos/demos/led.py`). Reuse both classes as-is for any other demo whose spec describes multiple stages rather than one continuous behaviour (Dooley, Bruce's 21, and Tank Status Window all look like candidates per their specs); only the individual `Phase` subclasses -- the actual choreography -- are demo-specific.
+A scripted demo builds its phase list once, in its own `__init__`, wraps it in a `PhaseSequence`, and delegates its own `update`/`draw`/`reset` to that sequence — the demo class itself carries no phase-index bookkeeping (see `LedDemo` in `retrodemos/demos/led.py`). Reuse both classes as-is for any other demo whose spec describes multiple stages rather than one continuous behaviour (Bruce's 21 and Tank Status Window both look like candidates per their specs); only the individual `Phase` subclasses -- the actual choreography -- are demo-specific.
 
 `framework/ticker.py`'s `Ticker` is a small companion: a fixed-interval tick accumulator (`advance(dt) -> int`, how many whole ticks fired) for any phase that advances in discrete steps rather than continuously, so each phase doesn't hand-roll its own dt-accumulation loop. It correctly catches up a slow frame instead of losing time; before it existed, LED's phases each wrote this by hand and did so inconsistently (see `retrodemos/demos/led_phases.py`'s history for the bug that motivated pulling it out).
 
 ### LED grid module
 
-`framework/led_grid.py` is shared by Dooley, LED, LED II, and Title. The original plan (below, kept for history) was one generic cell-grid renderer for all four; in practice each demo's source image turned out to need its own renderer shape closely matched to that image's actual pixel model, not a single grid abstraction bent to fit all three -- `SevenSegmentDisplay`, `DotMatrixDisplay`, `BitColumnDisplay`, and `BevelCellDisplay` are four distinct classes in the same module, not configurations of one class. Dooley's two content-bearing regions (its LED strip and colour palette) turned out to share a pixel model neither of the first three had, so they share the fourth instead of duplicating it:
+`framework/led_grid.py` is shared by LED, LED II, and Title. The original plan (below, kept for history) was one generic cell-grid renderer for all of them; in practice each demo's source image turned out to need its own renderer shape closely matched to that image's actual pixel model, not a single grid abstraction bent to fit all three -- `SevenSegmentDisplay`, `DotMatrixDisplay`, and `BitColumnDisplay` are three distinct classes in the same module, not configurations of one class. (A fourth, `BevelCellDisplay`, was built for Dooley on 2026-08-24 and removed the same day when Dooley was cut from the project -- see the Status section below.)
 
 | Demo | Grid style | Content |
 |---|---|---|
 | LED | Seven-segment digits, single row (`SevenSegmentDisplay`) | Built-in default string, overridable via `--text` |
 | LED II | Dot-matrix, red, gapped both axes (`DotMatrixDisplay`) | Same default/`--text` rule, scrolled |
 | Title | Bit-column, no bezel, no gap between columns, content computed directly from a byte value rather than a font (`BitColumnDisplay`) | Each column's own value (0-255) as its 8 bits; scrolled over time |
-| Dooley | Individually-bevelled 4x4 cells, no gap between cells, a solid/dither/blank fill per cell (`BevelCellDisplay`) | LED strip: invented 3x5-digit content, scrolled. Palette: a fixed mirrored rainbow chart, cycled. |
 
 ### Window chrome
 
@@ -125,12 +123,13 @@ Framework first, then simplest demo first, so the framework gets validated early
 | 1 | LED | Simplest: one grid, one content type, no interaction |
 | 2 | LED II | Same framework, different grid style |
 | 3 | Title | Same framework, generated content instead of text |
-| 4 | Dooley | Same framework, two content streams (main display + side column) |
-| 5 | CD Player | No shared grid or chrome reuse; several UI elements (sliders, meters, transport buttons) but no interaction or game logic |
-| 6 | Bruce's Windows | First interactive demo (drag, button); validates the interaction pattern Cinqtris needs next |
-| 7 | Cinqtris | Reuses the interaction pattern from Bruce's Windows for its About button; adds sprite art and pattern-cycling |
-| 8 | Bruce's 21 | Sprite art plus phase-cycling (deck cycle, then auto-deal), no interaction |
-| 9 | Tank Status Window | Most complex: scripted Combat-style animation (see `docs/tank-status-window.md`), reuses the LED grid's cell renderer at a larger scale, plus a placeholder button row |
+| 4 | CD Player | No shared grid or chrome reuse; several UI elements (sliders, meters, transport buttons) but no interaction or game logic |
+| 5 | Bruce's Windows | First interactive demo (drag, button); validates the interaction pattern Cinqtris needs next |
+| 6 | Cinqtris | Reuses the interaction pattern from Bruce's Windows for its About button; adds sprite art and pattern-cycling |
+| 7 | Bruce's 21 | Sprite art plus phase-cycling (deck cycle, then auto-deal), no interaction |
+| 8 | Tank Status Window | Most complex: scripted Combat-style animation (see `docs/tank-status-window.md`), reuses the LED grid's cell renderer at a larger scale, plus a placeholder button row |
+
+Dooley (originally slotted at order 4, "same framework, two content streams") was built on 2026-08-24, then cut from the project the same day (see the Status section below) -- removed from this table rather than left as a gap.
 
 Bruce's 21's slot wasn't explicit in the "simplest first" decision; it's placed by complexity (sprite art plus multi-phase cycling, no interaction) between Cinqtris and Tank Status Window. Move it if you'd rather it come earlier.
 
@@ -166,18 +165,18 @@ Not scheduled against the build order; tracked here so they aren't lost, and so 
 
 ## Open questions
 
-Tracked in `demos.md` and each demo's own doc, not duplicated here. One remains: Tank Status Window's button icons will be a custom monochrome pixel set (confirmed, not Unicode emoji), but the specific icons are deferred until its build slot (order 9).
+Tracked in `demos.md` and each demo's own doc, not duplicated here. One remains: Tank Status Window's button icons will be a custom monochrome pixel set (confirmed, not Unicode emoji), but the specific icons are deferred until its build slot (order 8).
 
 ## Status
 
-Framework scaffold and build orders 1-3 (LED, LED II, Title) are all done. `retrodemos/framework/` has canvas, keys, `Demo` base, runtime, `led_grid.py` (`SevenSegmentDisplay`, `DotMatrixDisplay`, `BitColumnDisplay`, each demo's adjacency-graph builder where it has one, `lerp_color` for brightness blending), `phase.py` (`Phase` + `PhaseSequence`), `ticker.py` (fixed-interval tick accumulator), and `graph_walk.py` (`Snake`, `bfs_rings`, and `Burst` -- generic graph-crawl/radiating-particle-burst primitives; `Snake`/`bfs_rings` were extracted once LED II's phases needed the identical logic LED's `SnakePhase`/`ExplosionPhase` already had over a different graph, `Burst` was built directly here for LED II's fireworks). LED (`led.py`/`led_phases.py`), LED II (`led_ii.py`/`led_ii_phases.py`), and Title (`title.py`/`title_phases.py`) each run a full 5-phase script on this shared machinery; LED II's snake and fireworks were retuned bigger/richer on request (2026-08-24) -- see its phases' docstrings for the specific before/after. Title was originally built as a single continuous behaviour, then rebuilt (same day, on request) into the same 5-beat script as its siblings once that was confirmed as what Title's spec should actually describe too; it needed `BitColumnDisplay.render_raw` added (alongside the existing `render_values`) so its snake/fireworks phases could address individual `(col, bit)` cells directly, and `TitleDisplays` (in `title.py`) to let one Phase drive both of Title's colour strips together, since Title (unlike LED/LED II) has two displays, not one. `--list` also got fixed while LED II was built: it was listing every module in `demos/`, including helper modules with no `DEMO_CLASS` (a latent bug since LED's own `led_phases.py`, made visibly worse by each demo's own phases module), not just runnable demos. 98 tests passing (`tests/`).
+Framework scaffold and build orders 1-3 (LED, LED II, Title) are all done. `retrodemos/framework/` has canvas, keys, `Demo` base, runtime, `led_grid.py` (`SevenSegmentDisplay`, `DotMatrixDisplay`, `BitColumnDisplay`, each demo's adjacency-graph builder where it has one, `lerp_color` for brightness blending), `phase.py` (`Phase` + `PhaseSequence`), `ticker.py` (fixed-interval tick accumulator), and `graph_walk.py` (`Snake`, `bfs_rings`, and `Burst` -- generic graph-crawl/radiating-particle-burst primitives; `Snake`/`bfs_rings` were extracted once LED II's phases needed the identical logic LED's `SnakePhase`/`ExplosionPhase` already had over a different graph, `Burst` was built directly here for LED II's fireworks). LED (`led.py`/`led_phases.py`), LED II (`led_ii.py`/`led_ii_phases.py`), and Title (`title.py`/`title_phases.py`) each run a full 5-phase script on this shared machinery; LED II's snake and fireworks were retuned bigger/richer on request (2026-08-24) -- see its phases' docstrings for the specific before/after. Title was originally built as a single continuous behaviour, then rebuilt (same day, on request) into the same 5-beat script as its siblings once that was confirmed as what Title's spec should actually describe too; it needed `BitColumnDisplay.render_raw` added (alongside the existing `render_values`) so its snake/fireworks phases could address individual `(col, bit)` cells directly, and `TitleDisplays` (in `title.py`) to let one Phase drive both of Title's colour strips together, since Title (unlike LED/LED II) has two displays, not one. `--list` also got fixed while LED II was built: it was listing every module in `demos/`, including helper modules with no `DEMO_CLASS` (a latent bug since LED's own `led_phases.py`, made visibly worse by each demo's own phases module), not just runnable demos. 106 tests passing (`tests/`).
 
 LED II's choreography (unlike LED's) has no source spec from Bruce; it's a deliberate structural echo of LED's script, confirmed with Bruce before building rather than assumed, with its own tuned constants for the much larger dot grid. `docs/led-ii.md` flags two of its content choices (the "1991" credit, the marquee default text) as reused from LED by assumption, not verified facts about LED II -- worth a look before considering LED II's polish pass done.
 
 Title turned out not to fit `DotMatrixDisplay` after all, despite that being the plan going in (see "LED grid module" above for the corrected per-demo table): its source image (`TITLE.png`) has no bezel, no gap between columns, and content directly computable from a byte value rather than drawn from a font, so it got its own renderer (`BitColumnDisplay`) instead of a forced extension. `TITLE.png` also turned out to encode the actual rendering *rule* (column x shows value x's own bits), not just a lit/unlit calibration image like LED's and LED II's source images -- verified pixel-exact against all 256 columns x 8 rows x 2 colour pairs.
 
-Build order 4 (Dooley) is done (2026-08-24). `DOOLEY1.png` turned out to be a Windows 3.1-style colour-picker dialog, not the "LED display + colour side column" the terse original spec guessed -- scoped down with Bruce before building (toolbar chrome excluded; LED strip, palette, and an RGB-spinner/grid area confirmed in scope) once a zoomed look showed more UI than the spec described. Neither `DotMatrixDisplay` nor `BitColumnDisplay` fit once measured; its LED strip and colour palette share a pixel model neither had (individually-bevelled 4x4 cells, not dots-on-one-shared-bezel or bezel-less columns), so they got a new shared renderer, `BevelCellDisplay`, verified byte-exact against both regions via reconstruct-and-diff (LED strip 0/3168 mismatches, palette 0/684). Its RGB-spinner/grid area is decorative backdrop, approximated with plain drawing rather than pixel-verified. Dooley also isn't a `Phase`/`PhaseSequence` script, the first demo built so far that isn't -- see `dooley.py`'s module docstring: `DOOLEY1.png` is a tool's UI screenshot, not an LED program with a narrative of its own beats, so it's one continuous scroll+cycle+idle behaviour instead. 124 tests passing (`tests/`).
+Dooley was built (2026-08-24: `BevelCellDisplay` renderer, LED strip + colour palette + RGB-spinner/grid area, verified byte-exact against the two content-bearing regions) then cut from the project the same day on request -- not going to work well as a demo. Demo code, tests, spec, and the `BevelCellDisplay` renderer were all removed; `DOOLEY1.png` moved to `demos.md`'s Excluded table. Not in the build order below any more, rather than left as a gap.
 
 ## Next step
 
-Build order 5: CD Player. No shared grid or chrome reuse expected (per the build-order table, it has its own UI elements -- sliders, meters, transport buttons -- and simulated, not real, audio); check `docs/cd-player.md` and do its own pixel-archaeology pass before assuming anything from LED/LED II/Title/Dooley carries over.
+Build order 4: CD Player. No shared grid or chrome reuse expected (per the build-order table, it has its own UI elements -- sliders, meters, transport buttons -- and simulated, not real, audio); check `docs/cd-player.md` and do its own pixel-archaeology pass before assuming anything from LED/LED II/Title carries over.

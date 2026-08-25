@@ -23,7 +23,7 @@ None beyond the shared quit/pause controls.
 
 ## Assets
 
-Shares the LED rendering framework with `led.md`, `led-ii.md`, and `dooley.md` -- though its `BitColumnDisplay` (`framework/led_grid.py`) is its own renderer, not an extension of `DotMatrixDisplay`: no bezel, no gap between columns, and content computed directly from a byte value rather than drawn from a font. Extending `DotMatrixDisplay` was the original plan (see `PLAN.md`), but Title's actual pixel model turned out different enough that forcing it in would have meant bending `DotMatrixDisplay`'s dot-grid shape around geometry it doesn't describe. `title.py`'s `TitleDisplays` composes the two `BitColumnDisplay` strips into the one unit every phase drives together, since (unlike LED/LED II, one display each) Title's script runs over two strips at once.
+Shares the LED rendering framework with `led.md` and `led-ii.md` -- though its `BitColumnDisplay` (`framework/led_grid.py`) is its own renderer, not an extension of `DotMatrixDisplay`: no bezel, no gap between columns, and content computed directly from a byte value rather than drawn from a font. Extending `DotMatrixDisplay` was the original plan (see `PLAN.md`), but Title's actual pixel model turned out different enough that forcing it in would have meant bending `DotMatrixDisplay`'s dot-grid shape around geometry it doesn't describe. `title.py`'s `TitleDisplays` composes the two `BitColumnDisplay` strips into the one unit every phase drives together, since (unlike LED/LED II, one display each) Title's script runs over two strips at once.
 
 ## Future polish (out of scope for now)
 

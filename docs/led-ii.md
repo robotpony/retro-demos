@@ -17,7 +17,7 @@ None beyond the shared quit/pause controls.
 
 ## Assets
 
-Shares the LED rendering framework with `led.md`, `title.md`, and `dooley.md`. Its dot-matrix renderer (`framework/led_grid.py`'s `DotMatrixDisplay`) and 5x7 digit font are new as of this demo; `text.md` and `dooley.md` should extend rather than fork them.
+Shares the LED rendering framework with `led.md` and `title.md`. Its dot-matrix renderer (`framework/led_grid.py`'s `DotMatrixDisplay`) and 5x7 digit font are new as of this demo; `title.md` should extend rather than fork them.
 
 ## Future polish (out of scope for now)
 

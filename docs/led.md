@@ -17,7 +17,7 @@ None beyond the shared quit/pause controls.
 
 ## Assets
 
-Shares the LED rendering framework with `led-ii.md`, `title.md`, and `dooley.md`.
+Shares the LED rendering framework with `led-ii.md` and `title.md`.
 
 ## Future polish (out of scope for now)
 
