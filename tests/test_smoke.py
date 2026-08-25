@@ -97,6 +97,26 @@ def test_canvas_scales_to_window_size():
     canvas.present(window)  # should not raise
 
 
+def test_mouse_events_are_rescaled_to_native_space_before_reaching_the_demo():
+    demo = _CountingDemo()
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(30, 15), button=1))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEMOTION, pos=(32, 19), rel=(2, 4), buttons=(1, 0, 0)))
+    run(demo, scale=2, fps=1000, max_frames=2)
+    down = next(e for e in demo.events_seen if e.type == pygame.MOUSEBUTTONDOWN)
+    motion = next(e for e in demo.events_seen if e.type == pygame.MOUSEMOTION)
+    assert down.pos == (15, 7)  # (30, 15) // 2
+    assert motion.pos == (16, 9)  # (32, 19) // 2
+    assert motion.rel == (1, 2)  # (2, 4) // 2
+
+
+def test_mouse_events_pass_through_unscaled_when_scale_is_one():
+    demo = _CountingDemo()
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(30, 15), button=1))
+    run(demo, scale=1, fps=1000, max_frames=2)
+    down = next(e for e in demo.events_seen if e.type == pygame.MOUSEBUTTONDOWN)
+    assert down.pos == (30, 15)
+
+
 def test_handle_shared_keys_maps_quit_pause_restart():
     quit_event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q)
     pause_event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE)

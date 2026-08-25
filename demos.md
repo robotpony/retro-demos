@@ -16,7 +16,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 | LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Built (`retrodemos/demos/led.py`) |
 | LED II | `LED-II-thumb.png` | Automated | [docs/led-ii.md](docs/led-ii.md) | Built (`retrodemos/demos/led_ii.py`) |
 | Title | `TITLE.png` | Automated | [docs/title.md](docs/title.md) | Built (`retrodemos/demos/title.py`) |
-| Bruce's Windows | `WINDOW1.png` | Interactive (exception; reference UI chrome) | [docs/bruces-windows.md](docs/bruces-windows.md) | Not started |
+| Bruce's Windows | `WINDOW1.png` | Interactive (exception; reference UI chrome) | [docs/bruces-windows.md](docs/bruces-windows.md) | Built (`retrodemos/demos/bruces_windows.py`) |
 | Tank Status Window | `WIN1.png` | Automated | [docs/tank-status-window.md](docs/tank-status-window.md) | Not started |
 
 ## Excluded

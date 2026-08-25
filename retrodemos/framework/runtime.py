@@ -13,6 +13,30 @@ from .canvas import Canvas
 from .demo import Demo
 from .keys import handle_shared_keys
 
+_MOUSE_POS_EVENTS = (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP)
+
+
+def _to_native_space(event: pygame.event.Event, scale: int) -> pygame.event.Event:
+    """Mouse events carry real window-pixel coordinates, but a demo draws
+    (and should think) entirely in its own native resolution -- it has no
+    way to know the canvas scale runtime.run() was launched with. Rescale
+    `pos` (and `rel`, for MOUSEMOTION) down to native space here, once, so
+    every demo's handle_event() can treat event coordinates as native
+    pixels without doing this conversion itself. First needed for Bruce's
+    Windows (2026-08-24), the first interactive demo; Cinqtris's About
+    button will want the same thing.
+
+    Integer division matches Canvas's own nearest-neighbour scaling: each
+    native pixel maps to exactly `scale` window pixels, so floor-dividing
+    a window coordinate recovers the native pixel it falls within."""
+    if scale == 1 or event.type not in _MOUSE_POS_EVENTS:
+        return event
+    data = dict(event.dict)
+    data["pos"] = (event.pos[0] // scale, event.pos[1] // scale)
+    if event.type == pygame.MOUSEMOTION:
+        data["rel"] = (event.rel[0] // scale, event.rel[1] // scale)
+    return pygame.event.Event(event.type, data)
+
 
 def run(
     demo: Demo,
@@ -54,7 +78,7 @@ def run(
                 demo.reset()
                 continue
             if not signal.claimed:
-                demo.handle_event(event)
+                demo.handle_event(_to_native_space(event, scale))
 
         if not running:
             break
