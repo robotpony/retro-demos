@@ -126,6 +126,15 @@ BEZEL_LIGHT = (255, 255, 255)
 SEG_ON = (191, 0, 0)
 GREEN_ON = (0, 255, 0)
 GREEN_OFF = (191, 0, 0)  # measured -- Band C's own "unlit" colour, not invented
+# The small EQ swatch beside "1AR" in Band B (not Band A, and not Band
+# C's own level-meter strip) turned out to be its own reference: a
+# vertical colour gradient, bottom to top -- green, then yellow, then a
+# sparse cyan accent at the very peak -- over the same dim-red "off"
+# background every other dot-matrix element in this demo uses. Measured
+# directly (255,255,0) and (0,255,255), not invented (playtesting,
+# 2026-08-26: "colours are a gradient of green, yellow, blue").
+EQ_YELLOW = (255, 255, 0)
+EQ_CYAN = (0, 255, 255)
 
 # Segments: a=top, b=top-right, c=bottom-right, d=bottom, e=bottom-left,
 # f=top-left, g=middle. What looked like a calibration strip spelling
@@ -293,13 +302,19 @@ EQ_BAR_ROWS = 7
 EQ_BAR_PITCH = 2
 
 
+# Row tiers, top (0) to bottom (EQ_BAR_ROWS-1) -- matches the measured
+# gradient swatch's own row-by-row colour almost exactly (rows0-1 cyan,
+# 2-3 yellow, 4-6 green -- see EQ_YELLOW/EQ_CYAN's own comment).
+_EQ_ROW_COLOUR = (EQ_CYAN, EQ_CYAN, EQ_YELLOW, EQ_YELLOW, GREEN_ON, GREEN_ON, GREEN_ON)
+
+
 def _draw_eq_bars(surface: pygame.Surface, x0: int, y0: int, levels: list[float]) -> None:
     for col in range(EQ_BAR_COLS):
         level = levels[col % len(levels)]
         lit_rows = round(level * EQ_BAR_ROWS)
         for row in range(EQ_BAR_ROWS):
             lit = row >= EQ_BAR_ROWS - lit_rows
-            colour = GREEN_ON if lit else GREEN_OFF
+            colour = _EQ_ROW_COLOUR[row] if lit else GREEN_OFF
             surface.set_at((x0 + EQ_BAR_X0 + col * EQ_BAR_PITCH, y0 + EQ_BAR_Y0 + row * EQ_BAR_PITCH), colour)
 
 
