@@ -10,11 +10,14 @@ import pygame
 
 from retrodemos.demos.desktop import (
     MENU_BAR_HEIGHT,
+    MENU_TEXT,
+    _CMD_GLYPH,
     _DEMO_ENTRIES,
     _MENU_ITEMS,
     DesktopDemo,
     _app_title_rect,
     _cmd_icon_rect,
+    _draw_menu_bar,
     _icon_slot_rect,
     _menu_item_rects,
 )
@@ -330,6 +333,23 @@ def test_windows_cannot_be_opened_above_the_menu_bar():
     _click(demo, _icon_slot_rect(0).center)
     key0 = _DEMO_ENTRIES[0][0]
     assert demo._open[key0].pos[1] >= MENU_BAR_HEIGHT
+
+
+def test_bold_menu_bar_text_has_a_visible_gap_between_characters():
+    # Regression: _draw_bold thickens each glyph a column to the right,
+    # which at the font's default 1px gap ran straight into the next
+    # character with no visible space at all (2026-08-25).
+    surf = pygame.Surface((200, MENU_BAR_HEIGHT))
+    _draw_menu_bar(surf, "II")  # "I" fills its own full glyph width -- worst case for touching
+    lit_cols = {x for x in range(surf.get_width()) if any(surf.get_at((x, y))[:3] == MENU_TEXT for y in range(MENU_BAR_HEIGHT))}
+    text_cols = sorted(x for x in lit_cols if x > _app_title_rect("I").x - 1)
+    # somewhere between the first and last lit text column, at least one
+    # column must be entirely background -- the two letters can't touch.
+    assert any(x not in lit_cols for x in range(text_cols[0], text_cols[-1] + 1))
+
+
+def test_cmd_glyph_is_square():
+    assert len({len(row) for row in _CMD_GLYPH}) == 1  # every row the same width
 
 
 def test_icon_slots_dont_overlap():

@@ -58,3 +58,14 @@ def test_text_cells_unknown_character_renders_blank_not_a_crash():
 def test_text_cells_empty_string_has_positive_width():
     _, width = text_cells("")
     assert width >= 1
+
+
+def test_text_cells_gap_overrides_the_default_spacing():
+    # The desktop shell's bold menu-bar text needs a wider gap than the
+    # default (see its own _BOLD_GAP) -- this is what makes that possible.
+    cells, width = text_cells("AB", gap=2)
+    a_cells = {(x, y) for x, y in cells if x < GLYPH_W}
+    b_cells = {(x, y) for x, y in cells if x >= GLYPH_W + 2}
+    assert a_cells == WINDOW_FONT["A"]
+    assert {(x - (GLYPH_W + 2), y) for x, y in b_cells} == WINDOW_FONT["B"]
+    assert width == 2 * GLYPH_W + 2

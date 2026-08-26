@@ -66,7 +66,7 @@ from retrodemos.demos.led import LedDemo
 from retrodemos.demos.led_ii import LedIIDemo
 from retrodemos.demos.title import TitleDemo
 from retrodemos.framework.demo import Demo
-from retrodemos.framework.pixel_font import GLYPH_H, text_cells
+from retrodemos.framework.pixel_font import GLYPH_GAP, GLYPH_H, text_cells
 from retrodemos.framework.window_chrome import BEZEL_DARK, render_window_chrome
 
 DESKTOP_BG = (0, 128, 128)  # invented -- matches the teal Bruce's Windows itself used to use as its own backdrop
@@ -86,6 +86,11 @@ MENU_TEXT = DESKTOP_BG
 MENU_PADDING = 2
 MENU_BAR_HEIGHT = MENU_PADDING + GLYPH_H + MENU_PADDING
 MENU_SIDE_MARGIN = 4
+# _draw_bold thickens each glyph by one column to its right -- laid out
+# at the font's own default 1px gap, that thickened column runs straight
+# into the next glyph with no visible space at all. Every bold text_cells
+# call on the bar/dropdown/panels uses this wider gap instead.
+_BOLD_GAP = GLYPH_GAP + 1
 
 ICON_SCALE = 3  # icon glyph pixel scale; labels render at the font's own native 1px
 ICON_SLOT_W = 110
@@ -181,17 +186,22 @@ _WINDOW_TITLES["cd_player_main"] = "CD PLAYER"
 _WINDOW_TITLES["cd_player_eq"] = "EQUALIZER"
 
 # The command-key glyph, new pixel art like the icon glyphs above -- no
-# source to measure, just a recognizable simplification at 7x7 (the same
-# GLYPH_H as pixel_font's own letters, so it lines up with the app-name
-# text next to it on the bar).
+# source to measure. Four square "loop" corners joined by a thin bridge
+# through the middle, evoking the real glyph's four connected loops
+# better than a flat bracket pair did (2026-08-25: the first version
+# read as "weird"). 9x9 -- doesn't need to match GLYPH_H like the app
+# title text next to it does, just fit inside MENU_BAR_HEIGHT (it does,
+# with a 1px margin top and bottom).
 _CMD_GLYPH = (
-    "##.#.##",
-    "##.#.##",
-    "#.....#",
-    ".......",
-    "#.....#",
-    "##.#.##",
-    "##.#.##",
+    "###...###",
+    "#.#...#.#",
+    "#.#...#.#",
+    "##.....##",
+    "..#####..",
+    "##.....##",
+    "#.#...#.#",
+    "#.#...#.#",
+    "###...###",
 )
 _CMD_GLYPH_CELLS = {(x, y) for y, row in enumerate(_CMD_GLYPH) for x, ch in enumerate(row) if ch == "#"}
 _CMD_GLYPH_W = len(_CMD_GLYPH[0])
@@ -264,7 +274,7 @@ def _cmd_icon_rect() -> pygame.Rect:
 
 
 def _menu_item_rects() -> list[pygame.Rect]:
-    width = max(text_cells(label)[1] for _id, label in _MENU_ITEMS) + _MENU_ITEM_PADDING_X * 2
+    width = max(text_cells(label, gap=_BOLD_GAP)[1] for _id, label in _MENU_ITEMS) + _MENU_ITEM_PADDING_X * 2
     return [pygame.Rect(0, MENU_BAR_HEIGHT + i * _MENU_ITEM_HEIGHT, width, _MENU_ITEM_HEIGHT) for i in range(len(_MENU_ITEMS))]
 
 
@@ -274,7 +284,7 @@ def _draw_menu_bar(surface: pygame.Surface, app_title: str) -> None:
     gy = (MENU_BAR_HEIGHT - len(_CMD_GLYPH)) // 2
     _draw_bold(surface, _CMD_GLYPH_CELLS, MENU_SIDE_MARGIN, gy)
 
-    title_cells, _title_w = text_cells(app_title)
+    title_cells, _title_w = text_cells(app_title, gap=_BOLD_GAP)
     tx = MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 8
     ty = MENU_PADDING
     _draw_bold(surface, title_cells, tx, ty)
@@ -284,7 +294,7 @@ def _app_title_rect(app_title: str) -> pygame.Rect:
     """Where `_draw_menu_bar` puts the app-name text -- used to hit-test
     a click on it (only meaningful while it reads "HELP", see
     DesktopDemo._handle_click)."""
-    _cells, width = text_cells(app_title)
+    _cells, width = text_cells(app_title, gap=_BOLD_GAP)
     x = MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 8
     return pygame.Rect(x, 0, width + 1, MENU_BAR_HEIGHT)  # +1: _draw_bold's own thickening
 
@@ -295,7 +305,7 @@ def _draw_dropdown(surface: pygame.Surface) -> None:
     pygame.draw.rect(surface, MENU_BAR_BG, outline)
     pygame.draw.rect(surface, BEZEL_DARK, outline, width=1)
     for (item_id, label), rect in zip(_MENU_ITEMS, rects):
-        cells, _w = text_cells(label)
+        cells, _w = text_cells(label, gap=_BOLD_GAP)
         _draw_bold(surface, cells, rect.x + _MENU_ITEM_PADDING_X, rect.y + MENU_PADDING)
         if rect is not rects[-1]:
             pygame.draw.line(surface, BEZEL_DARK, (rect.left, rect.bottom - 1), (rect.right - 1, rect.bottom - 1))
@@ -329,7 +339,7 @@ _HELP_LINES = (
 
 
 def _panel_rect(lines: tuple[str, ...]) -> pygame.Rect:
-    width = max(text_cells(line)[1] for line in lines) + 24
+    width = max(text_cells(line, gap=_BOLD_GAP)[1] for line in lines) + 24
     height = len(lines) * (GLYPH_H + 3) + 20
     x = (NATIVE_SIZE[0] - width) // 2
     y = (NATIVE_SIZE[1] - height) // 2
@@ -341,7 +351,7 @@ def _draw_panel(surface: pygame.Surface, lines: tuple[str, ...]) -> None:
     pygame.draw.rect(surface, MENU_BAR_BG, rect)
     pygame.draw.rect(surface, BEZEL_DARK, rect, width=1)
     for i, line in enumerate(lines):
-        cells, _w = text_cells(line)
+        cells, _w = text_cells(line, gap=_BOLD_GAP)
         _draw_bold(surface, cells, rect.x + 12, rect.y + 10 + i * (GLYPH_H + 3))
 
 
