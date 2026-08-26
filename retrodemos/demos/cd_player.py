@@ -458,6 +458,13 @@ def _draw_dot_glint(surface: pygame.Surface, x: int, y: int, colour: tuple[int, 
 
 
 def _draw_title_marquee(surface: pygame.Surface, x0: int, y0: int, cols: int, cells: set[tuple[int, int]]) -> None:
+    # Every cell gets its own dim "off" glint first -- a real dot-matrix
+    # display shows the whole grid faintly all the time, not a blank void
+    # around the lit text (playtesting, 2026-08-26: "missing background
+    # dots, field looks blank"). Lit cells redraw on top in GREEN_ON.
+    for col in range(cols):
+        for row in range(TITLE_ROWS):
+            _draw_dot_glint(surface, x0 + col * 3, y0 + row * 3, GREEN_OFF)
     for col, row in cells:
         if 0 <= col < cols:
             _draw_dot_glint(surface, x0 + col * 3, y0 + row * 3, GREEN_ON)
