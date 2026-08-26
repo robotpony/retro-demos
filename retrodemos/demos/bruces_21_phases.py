@@ -32,9 +32,13 @@ class DeckCyclePhase(Phase):
     TICK = 0.12
 
     def reset(self) -> None:
+        # back_for_slot, not back: the raw backs are 64x82 (BACKS.png's
+        # own native size) vs. every card's 48x66, so cycling the raw
+        # size in made the card visibly jump size twice a lap
+        # (playtesting, 2026-08-26: "card sizes change mid way through").
         items: list[pygame.Surface] = list(self.display.deck.all_cards())
-        items.append(self.display.deck.back(0))
-        items.append(self.display.deck.back(1))
+        items.append(self.display.deck.back_for_slot(0))
+        items.append(self.display.deck.back_for_slot(1))
         self.rng.shuffle(items)
         self._items = items
         self._index = 0
