@@ -105,19 +105,26 @@ class Deck:
 
 
 # ---- Table layout -- new design, invented (no finished-screen source
-# image for this demo). Sized to fit a hand of up to MAX_HAND fanned
-# cards, dealer row above, player row below. ----
+# image for this demo). Sized to fit a hand of up to MAX_HAND cards,
+# dealer row above, player row below. Playtesting (2026-08-26): this
+# deck's own art isn't corner-indexed like a real card (a small rank+suit
+# mark tucked in the corner) -- CARDS.png draws one giant rank glyph
+# filling most of the card, with the suit pip in the corners -- so any
+# real overlap hides the rank behind the next card. FAN_STEP is now
+# CARD_W itself (no overlap at all) instead of a partial-overlap fan,
+# and the whole table grew to match ("the field needs to be larger,
+# show as a standard 21 table").
 MAX_HAND = 5
-FAN_STEP = 20  # px of each fanned card left visible before the next overlaps it
+FAN_STEP = CARD_W  # cards sit edge to edge, not fanned/overlapping
 HAND_ROW_W = CARD_W + (MAX_HAND - 1) * FAN_STEP
 
-SIDE_MARGIN = 16
+SIDE_MARGIN = 24
 WIDTH = HAND_ROW_W + SIDE_MARGIN * 2
 
-TOP_MARGIN = 12
+TOP_MARGIN = 24
 LABEL_GAP = 3  # between a hand's label and its card row
-ROW_GAP = 20  # between the dealer row and the player label
-BOTTOM_MARGIN = 12
+ROW_GAP = 40  # between the dealer row and the player label
+BOTTOM_MARGIN = 24
 
 DEALER_LABEL_Y = TOP_MARGIN
 DEALER_ROW_Y = DEALER_LABEL_Y + GLYPH_H + LABEL_GAP
