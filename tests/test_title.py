@@ -75,8 +75,9 @@ def test_scroll_phase_finishes_after_its_duration():
 def test_snake_phase_spawns_pairs_a_quarter_width_apart():
     display = TitleDisplays(256)
     phase = SnakePhase(display, random.Random(0))
-    for chase in (phase._red_green, phase._blue_cyan):
-        left_col, right_col = chase.pair.a.body[0][0], chase.pair.b.body[0][0]
+    for match in (phase._red_green_match, phase._blue_cyan_match):
+        pair = match.round.pair
+        left_col, right_col = pair.a.body[0][0], pair.b.body[0][0]
         assert left_col < display.width // 4
         assert right_col >= 3 * display.width // 4
 
@@ -86,27 +87,46 @@ def test_snake_phase_resolves_with_a_winner_and_finishes_after_flashing():
     phase = SnakePhase(display, random.Random(0))
     resolved_at = None
     finished = False
-    for i in range(4000):
+    for i in range(40000):
         if phase.update(0.02):
             finished = True
             break
-        if resolved_at is None and phase._red_green.pair.resolved and phase._blue_cyan.pair.resolved:
+        if resolved_at is None and phase._red_green_match.round.pair.resolved and phase._blue_cyan_match.round.pair.resolved:
             resolved_at = i
     assert finished
     assert resolved_at is not None
-    assert phase._red_green.pair.winner in (phase._red_green.pair.a, phase._red_green.pair.b)
-    assert phase._blue_cyan.pair.winner in (phase._blue_cyan.pair.a, phase._blue_cyan.pair.b)
+    assert phase._red_green_match.finished
+    assert phase._blue_cyan_match.finished
+    assert phase._red_green_match.score[phase._red_green_match.match_winner] == phase.WINS_NEEDED
+    assert phase._blue_cyan_match.score[phase._blue_cyan_match.match_winner] == phase.WINS_NEEDED
 
 
 def test_snake_phase_grows_bodies_up_to_max_length():
     display = TitleDisplays(256)
     phase = SnakePhase(display, random.Random(0))
     max_len_seen = 0
-    for _ in range(2000):
+    for _ in range(8000):
         if phase.update(0.02):
             break
-        max_len_seen = max(max_len_seen, len(phase._red_green.pair.a.body), len(phase._red_green.pair.b.body))
+        pair = phase._red_green_match.round.pair
+        max_len_seen = max(max_len_seen, len(pair.a.body), len(pair.b.body))
     assert max_len_seen == phase.MAX_LENGTH
+
+
+def test_fireworks_phase_launches_rockets_before_either_burst_ignites():
+    display = TitleDisplays(256)
+    phase = FireworksPhase(display, random.Random(0))
+    assert phase._red_green_burst is None
+    assert phase._blue_cyan_burst is None
+    rows = display.red_green.ROWS
+    assert phase._red_green_rocket.start == (phase._red_green_target[0], rows - 1)
+    assert phase._blue_cyan_rocket.start == (phase._blue_cyan_target[0], rows - 1)
+    for _ in range(50):
+        phase.update(0.05)
+        if phase._red_green_burst is not None and phase._blue_cyan_burst is not None:
+            break
+    assert phase._red_green_burst is not None
+    assert phase._blue_cyan_burst is not None
 
 
 def test_fireworks_phase_repeats_and_finishes():

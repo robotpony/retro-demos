@@ -19,10 +19,14 @@ docstring for why a byte-value-per-column API can't spell anything.
 
 SnakePhase (2026-08-24) isn't a wandering Snake like LED/LED II's -- it's a
 chase minigame built on graph_walk.ChaseSnake, added because a plain Snake's
-unbiased random walk barely covers ground on this wide grid. See its own
-docstring for the full rationale; the short version is every phase's own
-docstring should be treated as more current than this file-level summary
-where the two disagree.
+unbiased random walk barely covers ground on this wide grid. Rebuilt again
+2026-08-26 (playtesting) into a best-of-3 match per strip via
+graph_walk.ChaseMatch, with a lower CHASE_CHANCE for more randomized paths;
+FireworksPhase gained a graph_walk.Rocket launch trail before each pair of
+bursts ignites, and ScrollPhase's own scroll intervals were sped up. See
+each phase's own docstring for the full rationale; the short version is
+every phase's own docstring should be treated as more current than this
+file-level summary where the two disagree.
 
 Every phase's specific timings and sizes are judgement calls tuned for this
 display's shape (256 columns x 8 rows per strip -- much wider and shallower
@@ -37,7 +41,7 @@ import random
 
 import pygame
 
-from retrodemos.framework.graph_walk import Burst, ChasePair
+from retrodemos.framework.graph_walk import Burst, ChaseMatch, ChasePair, Rocket
 from retrodemos.framework.led_grid import DOT_FONT, GLYPH_GAP, GLYPH_H, GLYPH_W, dot_grid_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
@@ -129,8 +133,10 @@ class ScrollPhase(Phase):
     the whole demo."""
 
     DURATION = 6.0
-    RED_GREEN_SCROLL_INTERVAL = 0.03
-    BLUE_CYAN_SCROLL_INTERVAL = 0.045
+    # Sped up 2026-08-26 playtesting ("speed up Title's own scroll"):
+    # was 0.03 / 0.045.
+    RED_GREEN_SCROLL_INTERVAL = 0.02
+    BLUE_CYAN_SCROLL_INTERVAL = 0.03
     BLUE_CYAN_DIRECTION = -1
 
     def reset(self) -> None:
@@ -205,6 +211,10 @@ class _TitleChase:
     def finished(self) -> bool:
         return self.pair.finished
 
+    @property
+    def winner_index(self) -> int | None:
+        return self.pair.winner_index
+
     def update(self, dt: float) -> None:
         if not self.pair.resolved:
             for _ in range(self._step_ticker.advance(dt)):
@@ -223,12 +233,17 @@ class _TitleChase:
 
 class SnakePhase(Phase):
     """A chase minigame on each strip: two snakes spawn a quarter-width
-    apart and hunt each other's head across the bit grid (red_green's pair
-    independent of blue_cyan's, same "the two strips don't mirror each
-    other" rule the original wandering snake used) until one catches the
-    other, flashes WIN_FLASH_CYCLES times, and hands off to fireworks --
-    which now reads as this chase's own finish, not just the next scripted
-    beat.
+    apart and hunt each other's head across the bit grid (red_green's
+    match independent of blue_cyan's, same "the two strips don't mirror
+    each other" rule the original wandering snake used) until one catches
+    the other and flashes -- now a best-of-WINS_NEEDED match per strip
+    (`graph_walk.ChaseMatch`, 2026-08-26 playtesting: "apply the same
+    best-of-3 treatment as LED II"), with a fresh round spawning
+    immediately after each score unless that strip's match is already won.
+    Only hands off to fireworks once *both* strips have finished their own
+    match. Score is shown as dots stacked on each snake's own starting
+    side of its strip (column 0 for the left spawn, the rightmost column
+    for the right), same convention as LED II's own SnakePhase.
 
     Rebuilt 2026-08-24 from a single unbiased Snake per strip (request: the
     scene should run longer and cover far more horizontal ground). A plain
@@ -241,26 +256,30 @@ class SnakePhase(Phase):
     motion, and `_chase_distance`'s X_WEIGHT/Y_WEIGHT bias keeps that motion
     mostly horizontal on this wide-but-shallow grid -- a vertical step it
     doesn't strictly need scores worse than a horizontal one that's still
-    available. Spawning the pair a guaranteed quarter-width apart (rather
+    available. Spawning each round a guaranteed quarter-width apart (rather
     than trusting two fully random starts to land far apart) is what makes
     "far more horizontal movement" true by construction, not just likely.
+    CHASE_CHANCE was also lowered 2026-08-26 (0.65 -> 0.45, same
+    playtesting: "snakes should take more randomized paths").
 
-    The catch/win/flash bookkeeping (`graph_walk.ChasePair`) is shared with
-    LED II's own SnakePhase (`led_ii_phases.py`, ported 2026-08-24); this
-    class's own `_TitleChase` wrapper covers what's Title-specific: two
-    independent pairs (one per strip) and the quarter-width spawn rule
-    tuned for this grid's 32:1 width:height ratio. LED's segment-graph
-    SnakePhase hasn't been ported to a chase minigame yet -- worth doing
-    next time it's touched; see PLAN.md's "Future framework polish"."""
+    The catch/win/flash bookkeeping (`graph_walk.ChasePair`) and the
+    best-of-N match bookkeeping (`graph_walk.ChaseMatch`) are both shared
+    with LED II's own SnakePhase (`led_ii_phases.py`); this class's own
+    `_TitleChase` wrapper covers what's Title-specific: two independent
+    matches (one per strip) and the quarter-width spawn rule tuned for
+    this grid's 32:1 width:height ratio. LED's segment-graph SnakePhase
+    hasn't been ported to a chase minigame yet -- worth doing next time
+    it's touched; see PLAN.md's "Future framework polish"."""
 
     STEP_INTERVAL = 0.025
     MAX_LENGTH = 30
     MAX_STEPS = 1200
-    CHASE_CHANCE = 0.65
+    CHASE_CHANCE = 0.45
     X_WEIGHT = 4.0
     Y_WEIGHT = 1.0
     WIN_FLASH_INTERVAL = 0.12
     WIN_FLASH_CYCLES = 5
+    WINS_NEEDED = 3
 
     def reset(self) -> None:
         width = self.display.width
@@ -270,56 +289,96 @@ class SnakePhase(Phase):
         def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
             return _chase_distance(a, b, self.X_WEIGHT, self.Y_WEIGHT)
 
-        def make_pair() -> _TitleChase:
+        def make_round() -> _TitleChase:
             return _TitleChase(
                 graph, width, rows, self.rng, distance, self.MAX_LENGTH, self.CHASE_CHANCE,
                 self.MAX_STEPS, self.STEP_INTERVAL, self.WIN_FLASH_INTERVAL, self.WIN_FLASH_CYCLES,
             )
 
-        self._red_green = make_pair()
-        self._blue_cyan = make_pair()
+        self._red_green_match = ChaseMatch(make_round, self.WINS_NEEDED)
+        self._blue_cyan_match = ChaseMatch(make_round, self.WINS_NEEDED)
+
+    def _score_cells(self, match: ChaseMatch, rows: int) -> set[tuple[int, int]]:
+        left_col, right_col = 0, self.display.width - 1
+        cells = {(left_col, row) for row in range(match.score[0])}
+        cells |= {(right_col, row) for row in range(match.score[1])}
+        return cells
+
+    def _advance(self, match: ChaseMatch, dt: float) -> None:
+        match.round.update(dt)
+        match.update()
 
     def update(self, dt: float) -> bool:
-        self._red_green.update(dt)
-        self._blue_cyan.update(dt)
-        return self._red_green.finished and self._blue_cyan.finished
+        self._advance(self._red_green_match, dt)
+        self._advance(self._blue_cyan_match, dt)
+        return self._red_green_match.finished and self._blue_cyan_match.finished
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.display.render_raw(surface, self._red_green.lit_cells(), self._blue_cyan.lit_cells())
+        rows = self.display.red_green.ROWS
+        red_green_cells = self._red_green_match.round.lit_cells() | self._score_cells(self._red_green_match, rows)
+        blue_cyan_cells = self._blue_cyan_match.round.lit_cells() | self._score_cells(self._blue_cyan_match, rows)
+        self.display.render_raw(surface, red_green_cells, blue_cyan_cells)
 
 
 class FireworksPhase(Phase):
     """Fireworks on both strips together: each burst picks an independent
-    random (col, bit) start per strip and radiates outward via
+    random (col, bit) target per strip and radiates outward via
     framework/graph_walk.py's Burst, same per-cell randomized fading
     brightness and spark scatter as LED II's RipplePhase. Repeats
     REPEATS times before moving on. Radius and spark count sized up
-    further than LED II's given how much wider this grid is."""
+    further than LED II's given how much wider this grid is.
+
+    A rocket lead-in was added 2026-08-26 (same request as LED II's own
+    RipplePhase): before each pair of bursts ignites, a
+    `graph_walk.Rocket` per strip climbs straight up from the bottom row
+    to that burst's own target column/row, and only once both rockets
+    arrive does either burst begin expanding."""
 
     REPEATS = 5
     RING_INTERVAL = 0.01
     MAX_RING = 30
     SPARK_COUNT = 30
     FADE_DURATION = 0.5
+    ROCKET_DURATION = 0.3
 
     def reset(self) -> None:
         self._graph = dot_grid_adjacency(self.display.width, self.display.red_green.ROWS)
         self._repeat_index = 0
         self._start_new_burst()
 
-    def _random_start(self) -> tuple[int, int]:
+    def _random_target(self) -> tuple[int, int]:
         return (self.rng.randrange(self.display.width), self.rng.randrange(self.display.red_green.ROWS))
 
     def _start_new_burst(self) -> None:
-        self._red_green_burst = Burst(
-            self._graph, self._random_start(), self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng
-        )
-        self._blue_cyan_burst = Burst(
-            self._graph, self._random_start(), self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng
-        )
+        rows = self.display.red_green.ROWS
+        red_green_target = self._random_target()
+        blue_cyan_target = self._random_target()
+        self._red_green_rocket = Rocket((red_green_target[0], rows - 1), red_green_target, self.ROCKET_DURATION)
+        self._blue_cyan_rocket = Rocket((blue_cyan_target[0], rows - 1), blue_cyan_target, self.ROCKET_DURATION)
+        self._red_green_target = red_green_target
+        self._blue_cyan_target = blue_cyan_target
+        self._red_green_burst: Burst | None = None
+        self._blue_cyan_burst: Burst | None = None
         self._ticker = Ticker(self.RING_INTERVAL)
 
+    def _ignite_if_ready(self) -> None:
+        if self._red_green_burst is None and self._red_green_rocket.done:
+            self._red_green_burst = Burst(
+                self._graph, self._red_green_target, self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng
+            )
+        if self._blue_cyan_burst is None and self._blue_cyan_rocket.done:
+            self._blue_cyan_burst = Burst(
+                self._graph, self._blue_cyan_target, self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng
+            )
+
     def update(self, dt: float) -> bool:
+        if self._red_green_burst is None:
+            self._red_green_rocket.age(dt)
+        if self._blue_cyan_burst is None:
+            self._blue_cyan_rocket.age(dt)
+        self._ignite_if_ready()
+        if self._red_green_burst is None or self._blue_cyan_burst is None:
+            return False
         self._red_green_burst.age(dt)
         self._blue_cyan_burst.age(dt)
         if self._red_green_burst.is_expanding or self._blue_cyan_burst.is_expanding:
@@ -341,7 +400,17 @@ class FireworksPhase(Phase):
         return False
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.display.render_raw(surface, self._red_green_burst.intensities(), self._blue_cyan_burst.intensities())
+        red_green = (
+            self._red_green_burst.intensities()
+            if self._red_green_burst is not None
+            else {self._red_green_rocket.position(): 1.0}
+        )
+        blue_cyan = (
+            self._blue_cyan_burst.intensities()
+            if self._blue_cyan_burst is not None
+            else {self._blue_cyan_rocket.position(): 1.0}
+        )
+        self.display.render_raw(surface, red_green, blue_cyan)
 
 
 class WordsPhase(Phase):
