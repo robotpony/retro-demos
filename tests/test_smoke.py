@@ -62,6 +62,32 @@ def test_pause_key_stops_updates_but_not_draws():
     assert demo.draws == 5  # drawing still happens while paused
 
 
+def test_demo_can_request_quit_via_want_quit():
+    # A demo can end the run itself, not just Esc/Q -- the desktop
+    # shell's own menu-bar Quit item, so far the only user of this.
+    # want_quit is checked right after events, before that frame's own
+    # update/draw, same as the quit key -- set before run() even starts,
+    # so the loop ends without a single iteration's work happening.
+    demo = _CountingDemo()
+    demo.want_quit = True
+    run(demo, scale=2, fps=1000, max_frames=1000)
+    assert demo.draws == 0
+    assert demo.updates == 0
+
+
+def test_want_quit_set_mid_run_stops_the_loop_before_max_frames():
+    class _QuitsAfterThreeUpdates(_CountingDemo):
+        def update(self, dt: float) -> None:
+            super().update(dt)
+            if self.updates == 3:
+                self.want_quit = True
+
+    demo = _QuitsAfterThreeUpdates()
+    run(demo, scale=2, fps=1000, max_frames=1000)
+    assert demo.updates == 3
+    assert demo.draws == 3  # the frame that set want_quit still finishes drawing
+
+
 def test_restart_key_calls_reset():
     demo = _CountingDemo()
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r))

@@ -31,6 +31,18 @@ Player's icon opens only its main window; the equalizer starts hidden
 and is revealed by clicking the main window's body, both special-cased
 in `_open_cd_player_main`/`_reveal_cd_player_eq` rather than
 generalized -- the only demo that needs multi-window treatment so far.
+
+A macOS-style top menu bar (2026-08-25, new content -- no source image
+for this either) sits above every window: white, exactly tall enough for
+one line of `pixel_font` text plus 2px padding on each side, the command
+glyph at the left, and the focused window's title (or "HELP" with
+nothing focused) after it. It's functional, not decorative: the command
+icon opens a dropdown with About (a small info panel), Close All Windows,
+and Quit. Quit needed one small framework addition -- `Demo.want_quit`,
+a poll-based flag `runtime.run()` checks each frame, since until now
+only Esc/Q (handled before any demo ever sees the event) could end a
+run. Windows are clamped below the bar; they can never be dragged
+underneath it.
 """
 
 from __future__ import annotations
@@ -43,17 +55,30 @@ from retrodemos.demos.led import LedDemo
 from retrodemos.demos.led_ii import LedIIDemo
 from retrodemos.demos.title import TitleDemo
 from retrodemos.framework.demo import Demo
-from retrodemos.framework.pixel_font import text_cells
-from retrodemos.framework.window_chrome import render_window_chrome
+from retrodemos.framework.pixel_font import GLYPH_H, text_cells
+from retrodemos.framework.window_chrome import BEZEL_DARK, render_window_chrome
 
 DESKTOP_BG = (0, 128, 128)  # invented -- matches the teal Bruce's Windows itself used to use as its own backdrop
 ICON_FG = (255, 255, 255)
 NATIVE_SIZE = (1024, 576)
 
+# Top menu bar, macOS-style (2026-08-25): white strip across the full
+# width, the desktop's own teal used for its text/glyphs (with a black
+# 1px drop shadow for legibility on white -- neither colour alone read
+# well against a plain white bar). Height is exactly 2px padding + one
+# line of `pixel_font` text + 2px padding, so the bar is only ever as
+# tall as it needs to be for whatever font the rest of the chrome uses.
+MENU_BAR_BG = (255, 255, 255)
+MENU_TEXT = DESKTOP_BG
+MENU_SHADOW = (0, 0, 0)
+MENU_PADDING = 2
+MENU_BAR_HEIGHT = MENU_PADDING + GLYPH_H + MENU_PADDING
+MENU_SIDE_MARGIN = 4
+
 ICON_SCALE = 3  # icon glyph pixel scale; labels render at the font's own native 1px
 ICON_SLOT_W = 110
 ICON_SLOT_H = 70
-ICON_ORIGIN = (30, 30)
+ICON_ORIGIN = (30, MENU_BAR_HEIGHT + 19)  # 19px gap below the bar, same gap the bar itself replaced
 ICON_GRID_ROWS = 6  # icons per column before wrapping to a new column, classic desktop-style
 LABEL_GAP = 5  # px between an icon's glyph and its label, at ICON_SCALE
 
@@ -127,8 +152,43 @@ _DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
 # CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
 _ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
 
+# What the menu bar calls each open-window key -- most come straight from
+# _DEMO_ENTRIES, but CD Player's two chromeless windows (cd_player_main/
+# cd_player_eq) aren't in that table under those keys, so they get their
+# own two entries.
+_WINDOW_TITLES: dict[str, str] = {key: title for key, title, _cls in _DEMO_ENTRIES if key != "cd_player"}
+_WINDOW_TITLES["cd_player_main"] = "CD PLAYER"
+_WINDOW_TITLES["cd_player_eq"] = "EQUALIZER"
+
+# The command-key glyph, new pixel art like the icon glyphs above -- no
+# source to measure, just a recognizable simplification at 7x7 (the same
+# GLYPH_H as pixel_font's own letters, so it lines up with the app-name
+# text next to it on the bar).
+_CMD_GLYPH = (
+    "##.#.##",
+    "##.#.##",
+    "#.....#",
+    ".......",
+    "#.....#",
+    "##.#.##",
+    "##.#.##",
+)
+_CMD_GLYPH_CELLS = {(x, y) for y, row in enumerate(_CMD_GLYPH) for x, ch in enumerate(row) if ch == "#"}
+_CMD_GLYPH_W = len(_CMD_GLYPH[0])
+
+# The dropdown under the command icon -- functional, not decorative: About
+# shows a small info panel, Close All Windows clears every open window,
+# Quit ends the whole run (via Demo.want_quit -- see runtime.py).
+_MENU_ITEMS: tuple[tuple[str, str], ...] = (
+    ("about", "ABOUT RETRODEMOS"),
+    ("close_all", "CLOSE ALL WINDOWS"),
+    ("quit", "QUIT"),
+)
+_MENU_ITEM_HEIGHT = MENU_PADDING + GLYPH_H + MENU_PADDING
+_MENU_ITEM_PADDING_X = 6
+
 CASCADE_STEP = 28
-CASCADE_BASE = (140, 100)
+CASCADE_BASE = (140, 100 + MENU_BAR_HEIGHT)
 CASCADE_WRAP = 8
 
 
@@ -163,6 +223,73 @@ def _draw_icon(surface: pygame.Surface, key: str, title: str, slot: pygame.Rect)
     ly = gy + glyph_h_px + LABEL_GAP
     for x, y in label_cells:
         surface.set_at((lx + x, ly + y), ICON_FG)
+
+
+def _draw_shadowed(surface: pygame.Surface, cells: set[tuple[int, int]], x0: int, y0: int) -> None:
+    """One lit pixel becomes two: MENU_SHADOW at +1/+1, then MENU_TEXT on
+    top -- the only way either colour reads clearly against the bar's
+    plain white (matching the teal desktop, but teal-on-white alone
+    washed out; see MENU_BAR_BG's own comment)."""
+    for x, y in cells:
+        surface.set_at((x0 + x + 1, y0 + y + 1), MENU_SHADOW)
+    for x, y in cells:
+        surface.set_at((x0 + x, y0 + y), MENU_TEXT)
+
+
+def _cmd_icon_rect() -> pygame.Rect:
+    # Wider than the glyph itself so the click target isn't a fiddly 7px
+    # square -- the whole left end of the bar, same idea as a real menu
+    # bar's Apple-menu hit zone being bigger than the logo glyph.
+    return pygame.Rect(0, 0, MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 12, MENU_BAR_HEIGHT)
+
+
+def _menu_item_rects() -> list[pygame.Rect]:
+    width = max(text_cells(label)[1] for _id, label in _MENU_ITEMS) + _MENU_ITEM_PADDING_X * 2
+    return [pygame.Rect(0, MENU_BAR_HEIGHT + i * _MENU_ITEM_HEIGHT, width, _MENU_ITEM_HEIGHT) for i in range(len(_MENU_ITEMS))]
+
+
+def _draw_menu_bar(surface: pygame.Surface, app_title: str) -> None:
+    width = surface.get_width()
+    surface.fill(MENU_BAR_BG, (0, 0, width, MENU_BAR_HEIGHT))
+    gy = (MENU_BAR_HEIGHT - len(_CMD_GLYPH)) // 2
+    _draw_shadowed(surface, _CMD_GLYPH_CELLS, MENU_SIDE_MARGIN, gy)
+
+    title_cells, _title_w = text_cells(app_title)
+    tx = MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 8
+    ty = MENU_PADDING
+    _draw_shadowed(surface, title_cells, tx, ty)
+
+
+def _draw_dropdown(surface: pygame.Surface) -> None:
+    rects = _menu_item_rects()
+    outline = rects[0].unionall(rects[1:])
+    pygame.draw.rect(surface, MENU_BAR_BG, outline)
+    pygame.draw.rect(surface, BEZEL_DARK, outline, width=1)
+    for (item_id, label), rect in zip(_MENU_ITEMS, rects):
+        cells, _w = text_cells(label)
+        _draw_shadowed(surface, cells, rect.x + _MENU_ITEM_PADDING_X, rect.y + MENU_PADDING)
+        if rect is not rects[-1]:
+            pygame.draw.line(surface, BEZEL_DARK, (rect.left, rect.bottom - 1), (rect.right - 1, rect.bottom - 1))
+
+
+_ABOUT_LINES = ("RETRODEMOS", "", "RECREATIONS OF BRUCE'S EARLY", "1990S DEMO PROGRAMS.")
+
+
+def _about_panel_rect() -> pygame.Rect:
+    width = max(text_cells(line)[1] for line in _ABOUT_LINES) + 24
+    height = len(_ABOUT_LINES) * (GLYPH_H + 3) + 20
+    x = (NATIVE_SIZE[0] - width) // 2
+    y = (NATIVE_SIZE[1] - height) // 2
+    return pygame.Rect(x, y, width, height)
+
+
+def _draw_about_panel(surface: pygame.Surface) -> None:
+    rect = _about_panel_rect()
+    pygame.draw.rect(surface, MENU_BAR_BG, rect)
+    pygame.draw.rect(surface, BEZEL_DARK, rect, width=1)
+    for i, line in enumerate(_ABOUT_LINES):
+        cells, _w = text_cells(line)
+        _draw_shadowed(surface, cells, rect.x + 12, rect.y + 10 + i * (GLYPH_H + 3))
 
 
 class _OpenWindow:
@@ -230,6 +357,9 @@ class DesktopDemo(Demo):
         self._order: list[str] = []  # z-order, back to front; last = focused/topmost
         self._dragging: str | None = None
         self._mouse_down_key: str | None = None
+        self._menu_open = False
+        self._about_open = False
+        self.want_quit = False  # polled by runtime.run() -- see its own comment
 
     def _open_demo(self, key: str, title: str, demo_cls: type[Demo]) -> None:
         if key in self._open:
@@ -312,9 +442,41 @@ class DesktopDemo(Demo):
                 max_x = NATIVE_SIZE[0] - win.size[0]
                 max_y = NATIVE_SIZE[1] - win.size[1]
                 win.pos[0] = max(0, min(max_x, win.pos[0]))
-                win.pos[1] = max(0, min(max_y, win.pos[1]))
+                # Clamped below the menu bar, not the desktop's own top
+                # edge -- a window can't be dragged up under it.
+                win.pos[1] = max(MENU_BAR_HEIGHT, min(max_y, win.pos[1]))
+
+    def _focused_app_title(self) -> str:
+        if not self._order:
+            return "HELP"
+        title = _WINDOW_TITLES.get(self._order[-1], self._order[-1].upper())
+        return f"{title} demo"
 
     def _handle_click(self, pos: tuple[int, int]) -> None:
+        # The menu bar sits above every window, so its own hit-testing
+        # (and whatever overlay it has open) comes first.
+        if self._about_open:
+            self._about_open = False  # any click anywhere dismisses it
+            return
+        if self._menu_open:
+            self._menu_open = False
+            for (item_id, _label), rect in zip(_MENU_ITEMS, _menu_item_rects()):
+                if rect.collidepoint(pos):
+                    if item_id == "about":
+                        self._about_open = True
+                    elif item_id == "close_all":
+                        self._open.clear()
+                        self._order.clear()
+                        self._dragging = None
+                        self._mouse_down_key = None
+                    elif item_id == "quit":
+                        self.want_quit = True
+                    break
+            return
+        if _cmd_icon_rect().collidepoint(pos):
+            self._menu_open = True
+            return
+
         key = self._window_at(pos)
         if key is not None:
             win = self._open[key]
@@ -379,6 +541,13 @@ class DesktopDemo(Demo):
         for key in self._order:
             win = self._open[key]
             surface.blit(win.render(), win.pos)
+
+        # Menu bar and its overlays always sit on top of every window.
+        _draw_menu_bar(surface, self._focused_app_title())
+        if self._menu_open:
+            _draw_dropdown(surface)
+        if self._about_open:
+            _draw_about_panel(surface)
 
 
 DEMO_CLASS = DesktopDemo

@@ -107,6 +107,13 @@ def run(
             if not signal.claimed:
                 demo.handle_event(_to_native_space(event, scale))
 
+        # A demo can ask to end the run itself (the desktop shell's own
+        # menu-bar Quit item, so far the only source), not just Esc/Q --
+        # want_quit is a poll-based flag, not a callback, the same
+        # pattern CD Player's closed/reveal_equalizer flags use.
+        if getattr(demo, "want_quit", False):
+            running = False
+
         if not running:
             break
 

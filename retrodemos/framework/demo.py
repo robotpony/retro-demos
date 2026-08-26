@@ -27,6 +27,13 @@ class Demo:
     #: Native pixel resolution, before the runtime scales it up for display.
     NATIVE_SIZE: tuple[int, int] = (320, 240)
 
+    #: Optional convention, not enforced here (runtime.run() reads it via
+    #: getattr with a False default): set True to ask the runtime to end
+    #: the run, the same way Esc/Q does. Poll-based, not a callback -- set
+    #: it in handle_event/update and the next frame's check picks it up.
+    #: So far only the desktop shell's own menu-bar Quit item uses this.
+    want_quit: bool = False
+
     def handle_event(self, event: pygame.event.Event) -> None:
         """Handle one event not already claimed by the shared keybindings.
 

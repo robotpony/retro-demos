@@ -8,7 +8,15 @@ from __future__ import annotations
 
 import pygame
 
-from retrodemos.demos.desktop import _DEMO_ENTRIES, DesktopDemo, _icon_slot_rect
+from retrodemos.demos.desktop import (
+    MENU_BAR_HEIGHT,
+    _DEMO_ENTRIES,
+    _MENU_ITEMS,
+    DesktopDemo,
+    _cmd_icon_rect,
+    _icon_slot_rect,
+    _menu_item_rects,
+)
 
 
 def _click(demo: DesktopDemo, pos: tuple[int, int]) -> None:
@@ -109,7 +117,10 @@ def test_dragging_clamps_to_the_desktop_bounds():
     tb = win0.title_bar_screen_rect()
     demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=tb.center, button=1))
     demo.handle_event(pygame.event.Event(pygame.MOUSEMOTION, pos=(-999, -999), rel=(-5000, -5000), buttons=(1, 0, 0)))
-    assert win0.pos == [0, 0]
+    # x clamps to the desktop's left edge; y clamps to just below the
+    # menu bar, not the desktop's own top edge -- a window can't be
+    # dragged up underneath it.
+    assert win0.pos == [0, MENU_BAR_HEIGHT]
 
 
 def test_clicking_the_close_button_closes_the_window_and_reenables_the_icon():
@@ -192,6 +203,79 @@ def test_closing_the_cd_player_main_window_reenables_its_icon():
     # icon is clickable again
     _click(demo, _icon_slot_rect(_cd_player_icon_index()).center)
     assert "cd_player_main" in demo._open
+
+
+def _menu_item_rect(item_id: str) -> pygame.Rect:
+    index = next(i for i, (mid, _label) in enumerate(_MENU_ITEMS) if mid == item_id)
+    return _menu_item_rects()[index]
+
+
+def test_app_title_shows_help_when_nothing_is_focused():
+    demo = DesktopDemo()
+    assert demo._focused_app_title() == "HELP"
+
+
+def test_app_title_names_the_focused_window_with_demo_appended():
+    demo = DesktopDemo()
+    _click(demo, _icon_slot_rect(0).center)  # led
+    assert demo._focused_app_title() == "LED demo"
+
+
+def test_clicking_the_cmd_icon_opens_the_dropdown():
+    demo = DesktopDemo()
+    _click(demo, _cmd_icon_rect().center)
+    assert demo._menu_open is True
+
+
+def test_clicking_about_opens_the_about_panel_and_closes_the_menu():
+    demo = DesktopDemo()
+    _click(demo, _cmd_icon_rect().center)
+    _click(demo, _menu_item_rect("about").center)
+    assert demo._menu_open is False
+    assert demo._about_open is True
+
+
+def test_clicking_anywhere_dismisses_the_about_panel():
+    demo = DesktopDemo()
+    _click(demo, _cmd_icon_rect().center)
+    _click(demo, _menu_item_rect("about").center)
+    _click(demo, (5, MENU_BAR_HEIGHT + 5))
+    assert demo._about_open is False
+
+
+def test_close_all_windows_clears_every_open_window():
+    demo = DesktopDemo()
+    _click(demo, _icon_slot_rect(0).center)
+    _click(demo, _icon_slot_rect(1).center)
+    assert len(demo._open) == 2
+    _click(demo, _cmd_icon_rect().center)
+    _click(demo, _menu_item_rect("close_all").center)
+    assert demo._open == {}
+    assert demo._order == []
+
+
+def test_quit_sets_want_quit():
+    demo = DesktopDemo()
+    assert demo.want_quit is False
+    _click(demo, _cmd_icon_rect().center)
+    _click(demo, _menu_item_rect("quit").center)
+    assert demo.want_quit is True
+
+
+def test_clicking_outside_the_dropdown_closes_it_without_acting():
+    demo = DesktopDemo()
+    _click(demo, _cmd_icon_rect().center)
+    _click(demo, (900, 500))
+    assert demo._menu_open is False
+    assert demo.want_quit is False
+    assert demo._about_open is False
+
+
+def test_windows_cannot_be_opened_above_the_menu_bar():
+    demo = DesktopDemo()
+    _click(demo, _icon_slot_rect(0).center)
+    key0 = _DEMO_ENTRIES[0][0]
+    assert demo._open[key0].pos[1] >= MENU_BAR_HEIGHT
 
 
 def test_icon_slots_dont_overlap():
