@@ -12,11 +12,16 @@ were mocked up and confirmed with Bruce before wiring in (2026-08-25),
 same workflow CD Player's prototype pass and Bruce's Windows' pixel
 archaeology got, just without a source image to measure against.
 
-One instance per demo at a time (opening an already-open demo's icon just
-focuses its existing window instead of spawning a second one); every open
-demo keeps running its own `update(dt)` even when not focused, the same
-"several little utility programs left open together" attract-mode feel
-`PLAN.md` describes. Background windows aren't paused.
+One instance per demo at a time. An open demo's icon doesn't disappear
+(2026-08-25: that "is weird") -- it stays put and dims, same as any
+other disabled control, and clicking it does nothing while its window is
+open. `bruces_windows` is disabled outright regardless of open state, in
+`_PERMANENTLY_DISABLED`: a demo *of* windowing reads as redundant now
+that the desktop itself is a real windowing system, so it's parked
+rather than removed -- see that set's own comment. Every open demo keeps
+running its own `update(dt)` even when not focused, the same "several
+little utility programs left open together" attract-mode feel `PLAN.md`
+describes. Background windows aren't paused.
 
 Most demos get exactly one window through the generic chrome wrapper
 above. CD Player is the exception (2026-08-25 playtesting: "should get
@@ -36,13 +41,19 @@ A macOS-style top menu bar (2026-08-25, new content -- no source image
 for this either) sits above every window: white, exactly tall enough for
 one line of `pixel_font` text plus 2px padding on each side, the command
 glyph at the left, and the focused window's title (or "HELP" with
-nothing focused) after it. It's functional, not decorative: the command
-icon opens a dropdown with About (a small info panel), Close All Windows,
-and Quit. Quit needed one small framework addition -- `Demo.want_quit`,
-a poll-based flag `runtime.run()` checks each frame, since until now
-only Esc/Q (handled before any demo ever sees the event) could end a
-run. Windows are clamped below the bar; they can never be dragged
-underneath it.
+nothing focused) after it. Both render bold (`_draw_bold`: every lit
+cell gets a second one a column to its right, a cheap way to thicken a
+1px-stroke font that has no separate bold weight) -- an earlier
+drop-shadow version was dropped in favour of this once seen live. It's
+functional, not decorative: the command icon opens a dropdown with About
+(a small info panel), Close All Windows, and Quit; the "HELP" text
+itself, while nothing is focused, opens a panel of condensed `README.md`
+content (`_HELP_LINES` -- paraphrased, since `pixel_font` has no
+punctuation beyond an apostrophe). Quit needed one small framework
+addition -- `Demo.want_quit`, a poll-based flag `runtime.run()` checks
+each frame, since until now only Esc/Q (handled before any demo ever
+sees the event) could end a run. Windows are clamped below the bar; they
+can never be dragged underneath it.
 """
 
 from __future__ import annotations
@@ -60,17 +71,18 @@ from retrodemos.framework.window_chrome import BEZEL_DARK, render_window_chrome
 
 DESKTOP_BG = (0, 128, 128)  # invented -- matches the teal Bruce's Windows itself used to use as its own backdrop
 ICON_FG = (255, 255, 255)
+ICON_DISABLED_FG = (0, 96, 96)  # dimmed toward DESKTOP_BG, not hidden -- still visibly present, just inert
 NATIVE_SIZE = (1024, 576)
 
 # Top menu bar, macOS-style (2026-08-25): white strip across the full
-# width, the desktop's own teal used for its text/glyphs (with a black
-# 1px drop shadow for legibility on white -- neither colour alone read
-# well against a plain white bar). Height is exactly 2px padding + one
-# line of `pixel_font` text + 2px padding, so the bar is only ever as
-# tall as it needs to be for whatever font the rest of the chrome uses.
+# width, the desktop's own teal used for its text/glyphs, bolded (see
+# _draw_bold) rather than shadowed -- an earlier drop-shadow version was
+# dropped in favour of a heavier weight instead. Height is exactly 2px
+# padding + one line of `pixel_font` text + 2px padding, so the bar is
+# only ever as tall as it needs to be for whatever font the rest of the
+# chrome uses.
 MENU_BAR_BG = (255, 255, 255)
 MENU_TEXT = DESKTOP_BG
-MENU_SHADOW = (0, 0, 0)
 MENU_PADDING = 2
 MENU_BAR_HEIGHT = MENU_PADDING + GLYPH_H + MENU_PADDING
 MENU_SIDE_MARGIN = 4
@@ -147,10 +159,18 @@ _DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
 ]
 
 # cd_player's icon represents two independently-opened windows, not one
-# -- the icon should hide once its main window is open, whether or not
-# the equalizer has been revealed alongside it (see module docstring on
-# CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
+# -- the icon should disable once its main window is open, whether or
+# not the equalizer has been revealed alongside it (see module docstring
+# on CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
 _ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
+
+# Disabled outright, regardless of open state -- greyed out and inert,
+# still visible rather than removed. Bruce's Windows started as the
+# demo that validated the desktop's own window-chrome pattern, but a
+# demo *of* windowing inside a real windowing system now reads as
+# redundant; parked here rather than removed since a use for it may
+# still turn up (2026-08-25).
+_PERMANENTLY_DISABLED = {"bruces_windows"}
 
 # What the menu bar calls each open-window key -- most come straight from
 # _DEMO_ENTRIES, but CD Player's two chromeless windows (cd_player_main/
@@ -210,30 +230,30 @@ def _icon_slot_rect(index: int) -> pygame.Rect:
     return pygame.Rect(x0 + col * ICON_SLOT_W, y0 + row * ICON_SLOT_H, ICON_SLOT_W, ICON_SLOT_H)
 
 
-def _draw_icon(surface: pygame.Surface, key: str, title: str, slot: pygame.Rect) -> None:
+def _draw_icon(surface: pygame.Surface, key: str, title: str, slot: pygame.Rect, *, disabled: bool = False) -> None:
+    colour = ICON_DISABLED_FG if disabled else ICON_FG
     gw, gh = _icon_glyph_size(key)
     glyph_w_px, glyph_h_px = gw * ICON_SCALE, gh * ICON_SCALE
     gx = slot.x + (slot.width - glyph_w_px) // 2
     gy = slot.y
     for x, y in _icon_cells(key):
-        surface.fill(ICON_FG, (gx + x * ICON_SCALE, gy + y * ICON_SCALE, ICON_SCALE, ICON_SCALE))
+        surface.fill(colour, (gx + x * ICON_SCALE, gy + y * ICON_SCALE, ICON_SCALE, ICON_SCALE))
 
     label_cells, label_w = text_cells(title)
     lx = slot.x + (slot.width - label_w) // 2
     ly = gy + glyph_h_px + LABEL_GAP
     for x, y in label_cells:
-        surface.set_at((lx + x, ly + y), ICON_FG)
+        surface.set_at((lx + x, ly + y), colour)
 
 
-def _draw_shadowed(surface: pygame.Surface, cells: set[tuple[int, int]], x0: int, y0: int) -> None:
-    """One lit pixel becomes two: MENU_SHADOW at +1/+1, then MENU_TEXT on
-    top -- the only way either colour reads clearly against the bar's
-    plain white (matching the teal desktop, but teal-on-white alone
-    washed out; see MENU_BAR_BG's own comment)."""
-    for x, y in cells:
-        surface.set_at((x0 + x + 1, y0 + y + 1), MENU_SHADOW)
+def _draw_bold(surface: pygame.Surface, cells: set[tuple[int, int]], x0: int, y0: int) -> None:
+    """A cheap "bold" for a 1px-stroke font: every lit cell gets a second
+    lit cell one column to its right, thickening each vertical stroke
+    without redrawing the glyph at a different weight (there isn't one --
+    see pixel_font.py's own docstring). Plain MENU_TEXT, no shadow."""
     for x, y in cells:
         surface.set_at((x0 + x, y0 + y), MENU_TEXT)
+        surface.set_at((x0 + x + 1, y0 + y), MENU_TEXT)
 
 
 def _cmd_icon_rect() -> pygame.Rect:
@@ -252,12 +272,21 @@ def _draw_menu_bar(surface: pygame.Surface, app_title: str) -> None:
     width = surface.get_width()
     surface.fill(MENU_BAR_BG, (0, 0, width, MENU_BAR_HEIGHT))
     gy = (MENU_BAR_HEIGHT - len(_CMD_GLYPH)) // 2
-    _draw_shadowed(surface, _CMD_GLYPH_CELLS, MENU_SIDE_MARGIN, gy)
+    _draw_bold(surface, _CMD_GLYPH_CELLS, MENU_SIDE_MARGIN, gy)
 
     title_cells, _title_w = text_cells(app_title)
     tx = MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 8
     ty = MENU_PADDING
-    _draw_shadowed(surface, title_cells, tx, ty)
+    _draw_bold(surface, title_cells, tx, ty)
+
+
+def _app_title_rect(app_title: str) -> pygame.Rect:
+    """Where `_draw_menu_bar` puts the app-name text -- used to hit-test
+    a click on it (only meaningful while it reads "HELP", see
+    DesktopDemo._handle_click)."""
+    _cells, width = text_cells(app_title)
+    x = MENU_SIDE_MARGIN * 2 + _CMD_GLYPH_W + 8
+    return pygame.Rect(x, 0, width + 1, MENU_BAR_HEIGHT)  # +1: _draw_bold's own thickening
 
 
 def _draw_dropdown(surface: pygame.Surface) -> None:
@@ -267,29 +296,53 @@ def _draw_dropdown(surface: pygame.Surface) -> None:
     pygame.draw.rect(surface, BEZEL_DARK, outline, width=1)
     for (item_id, label), rect in zip(_MENU_ITEMS, rects):
         cells, _w = text_cells(label)
-        _draw_shadowed(surface, cells, rect.x + _MENU_ITEM_PADDING_X, rect.y + MENU_PADDING)
+        _draw_bold(surface, cells, rect.x + _MENU_ITEM_PADDING_X, rect.y + MENU_PADDING)
         if rect is not rects[-1]:
             pygame.draw.line(surface, BEZEL_DARK, (rect.left, rect.bottom - 1), (rect.right - 1, rect.bottom - 1))
 
 
-_ABOUT_LINES = ("RETRODEMOS", "", "RECREATIONS OF BRUCE'S EARLY", "1990S DEMO PROGRAMS.")
+# Both overlay panels (About, Help) are the same shape: a centred white
+# box, one pixel_font line per row. Content only differs in which lines
+# they hold, so one pair of helpers draws both.
+_ABOUT_LINES = ("RETRODEMOS", "", "RECREATIONS OF BRUCE'S EARLY", "1990S DEMO PROGRAMS")
+
+# Condensed from README.md -- pixel_font only has A-Z/0-9/'/space (see its
+# own docstring), so this paraphrases rather than quoting verbatim;
+# punctuation the font can't render (periods, parens, backticks) is
+# dropped rather than showing as gaps.
+_HELP_LINES = (
+    "RETRO DEMOS",
+    "",
+    "DEMOS BASED ON PROGRAMS WRITTEN IN THE",
+    "EARLY 1990S FOR THE ATARI ST AND EARLY",
+    "WINDOWS MACHINES",
+    "",
+    "CLICK AN ICON TO OPEN A DEMO AS A WINDOW",
+    "DRAG A WINDOW TO MOVE IT",
+    "CLICK ITS CLOSE BUTTON TO SHUT IT",
+    "",
+    "CONTROLS",
+    "ESC OR Q QUIT",
+    "SPACE PAUSE OR RESUME",
+    "R RESTART",
+)
 
 
-def _about_panel_rect() -> pygame.Rect:
-    width = max(text_cells(line)[1] for line in _ABOUT_LINES) + 24
-    height = len(_ABOUT_LINES) * (GLYPH_H + 3) + 20
+def _panel_rect(lines: tuple[str, ...]) -> pygame.Rect:
+    width = max(text_cells(line)[1] for line in lines) + 24
+    height = len(lines) * (GLYPH_H + 3) + 20
     x = (NATIVE_SIZE[0] - width) // 2
     y = (NATIVE_SIZE[1] - height) // 2
     return pygame.Rect(x, y, width, height)
 
 
-def _draw_about_panel(surface: pygame.Surface) -> None:
-    rect = _about_panel_rect()
+def _draw_panel(surface: pygame.Surface, lines: tuple[str, ...]) -> None:
+    rect = _panel_rect(lines)
     pygame.draw.rect(surface, MENU_BAR_BG, rect)
     pygame.draw.rect(surface, BEZEL_DARK, rect, width=1)
-    for i, line in enumerate(_ABOUT_LINES):
+    for i, line in enumerate(lines):
         cells, _w = text_cells(line)
-        _draw_shadowed(surface, cells, rect.x + 12, rect.y + 10 + i * (GLYPH_H + 3))
+        _draw_bold(surface, cells, rect.x + 12, rect.y + 10 + i * (GLYPH_H + 3))
 
 
 class _OpenWindow:
@@ -359,6 +412,7 @@ class DesktopDemo(Demo):
         self._mouse_down_key: str | None = None
         self._menu_open = False
         self._about_open = False
+        self._help_open = False
         self.want_quit = False  # polled by runtime.run() -- see its own comment
 
     def _open_demo(self, key: str, title: str, demo_cls: type[Demo]) -> None:
@@ -458,6 +512,9 @@ class DesktopDemo(Demo):
         if self._about_open:
             self._about_open = False  # any click anywhere dismisses it
             return
+        if self._help_open:
+            self._help_open = False  # same -- any click dismisses it
+            return
         if self._menu_open:
             self._menu_open = False
             for (item_id, _label), rect in zip(_MENU_ITEMS, _menu_item_rects()):
@@ -475,6 +532,10 @@ class DesktopDemo(Demo):
             return
         if _cmd_icon_rect().collidepoint(pos):
             self._menu_open = True
+            return
+        app_title = self._focused_app_title()
+        if app_title == "HELP" and _app_title_rect(app_title).collidepoint(pos):
+            self._help_open = True
             return
 
         key = self._window_at(pos)
@@ -518,8 +579,7 @@ class DesktopDemo(Demo):
             return
 
         for i, (demo_key, title, demo_cls) in enumerate(_DEMO_ENTRIES):
-            open_key = _ICON_OPEN_KEY.get(demo_key, demo_key)
-            if open_key in self._open:
+            if self._icon_disabled(demo_key):
                 continue
             if _icon_slot_rect(i).collidepoint(pos):
                 if demo_key == "cd_player":
@@ -528,16 +588,23 @@ class DesktopDemo(Demo):
                     self._open_demo(demo_key, title, demo_cls)
                 return
 
+    def _icon_disabled(self, demo_key: str) -> bool:
+        if demo_key in _PERMANENTLY_DISABLED:
+            return True
+        open_key = _ICON_OPEN_KEY.get(demo_key, demo_key)
+        return open_key in self._open
+
     def update(self, dt: float) -> None:
         for key in self._order:
             self._open[key].demo.update(dt)
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(DESKTOP_BG)
+        # Every icon stays visible always -- an open (or permanently
+        # disabled) demo's icon just goes inert and dims, rather than
+        # disappearing (2026-08-25: disappearing "is weird").
         for i, (key, title, _demo_cls) in enumerate(_DEMO_ENTRIES):
-            open_key = _ICON_OPEN_KEY.get(key, key)
-            if open_key not in self._open:
-                _draw_icon(surface, key, title, _icon_slot_rect(i))
+            _draw_icon(surface, key, title, _icon_slot_rect(i), disabled=self._icon_disabled(key))
         for key in self._order:
             win = self._open[key]
             surface.blit(win.render(), win.pos)
@@ -547,7 +614,9 @@ class DesktopDemo(Demo):
         if self._menu_open:
             _draw_dropdown(surface)
         if self._about_open:
-            _draw_about_panel(surface)
+            _draw_panel(surface, _ABOUT_LINES)
+        if self._help_open:
+            _draw_panel(surface, _HELP_LINES)
 
 
 DEMO_CLASS = DesktopDemo

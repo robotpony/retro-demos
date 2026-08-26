@@ -13,6 +13,7 @@ from retrodemos.demos.desktop import (
     _DEMO_ENTRIES,
     _MENU_ITEMS,
     DesktopDemo,
+    _app_title_rect,
     _cmd_icon_rect,
     _icon_slot_rect,
     _menu_item_rects,
@@ -54,6 +55,36 @@ def test_clicking_an_already_open_icon_focuses_instead_of_duplicating():
     _click(demo, slot.center)
     _click(demo, slot.center)
     assert len(demo._open) == 1
+
+
+def test_an_open_windows_icon_disables_rather_than_disappearing():
+    demo = DesktopDemo()
+    key0 = _DEMO_ENTRIES[0][0]
+    assert demo._icon_disabled(key0) is False
+    _click(demo, _icon_slot_rect(0).center)
+    # still tracked (draw() always draws every icon, just dimmed when
+    # disabled) -- disabled, not hidden.
+    assert demo._icon_disabled(key0) is True
+    assert len(demo._open) == 1
+
+
+def test_clicking_a_disabled_icon_does_nothing():
+    demo = DesktopDemo()
+    slot = _icon_slot_rect(0)
+    _click(demo, slot.center)
+    win = list(demo._open.values())[0]
+    start_pos = list(win.pos)
+    _click(demo, slot.center)  # icon is now disabled -- shouldn't reopen/move/duplicate
+    assert len(demo._open) == 1
+    assert win.pos == start_pos
+
+
+def test_bruces_windows_icon_is_permanently_disabled():
+    demo = DesktopDemo()
+    index = next(i for i, (key, _title, _cls) in enumerate(_DEMO_ENTRIES) if key == "bruces_windows")
+    assert demo._icon_disabled("bruces_windows") is True
+    _click(demo, _icon_slot_rect(index).center)
+    assert demo._open == {}
 
 
 def test_opening_two_demos_keeps_both_and_orders_by_recency():
@@ -269,6 +300,29 @@ def test_clicking_outside_the_dropdown_closes_it_without_acting():
     assert demo._menu_open is False
     assert demo.want_quit is False
     assert demo._about_open is False
+
+
+def test_clicking_help_opens_the_help_panel_when_nothing_is_focused():
+    demo = DesktopDemo()
+    assert demo._focused_app_title() == "HELP"
+    _click(demo, _app_title_rect("HELP").center)
+    assert demo._help_open is True
+
+
+def test_help_text_is_not_clickable_once_a_window_is_focused():
+    demo = DesktopDemo()
+    _click(demo, _icon_slot_rect(0).center)  # focuses led, app title is no longer HELP
+    help_rect = _app_title_rect("HELP")
+    _click(demo, help_rect.center)
+    assert demo._help_open is False
+
+
+def test_clicking_anywhere_dismisses_the_help_panel():
+    demo = DesktopDemo()
+    _click(demo, _app_title_rect("HELP").center)
+    assert demo._help_open is True
+    _click(demo, (500, 400))
+    assert demo._help_open is False
 
 
 def test_windows_cannot_be_opened_above_the_menu_bar():
