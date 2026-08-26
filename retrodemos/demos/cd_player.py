@@ -284,9 +284,21 @@ _STATUS_TEXT_ROWS = (
 )
 
 
-def _draw_status_text(surface: pygame.Surface, x0: int, y0: int) -> None:
+# Clicking the main window's body used to reveal the (now-removed)
+# equalizer window; repurposed 2026-08-26 into cycling this status
+# indicator through 3 states, all sliced from the one measured mask
+# rather than inventing new art in a different font/weight: the full
+# icon+"1AR" (repeat-track), the icon alone (col 0-16, reads as
+# repeat-all/continuous with no specific track called out), and blank
+# (repeat off).
+_STATUS_ICON_ONLY_WIDTH = 17
+STATUS_MODE_COUNT = 3
+
+
+def _draw_status_text(surface: pygame.Surface, x0: int, y0: int, mode: int = 0) -> None:
+    width = (len(_STATUS_TEXT_ROWS[0]), _STATUS_ICON_ONLY_WIDTH, 0)[mode]
     for dy, row in enumerate(_STATUS_TEXT_ROWS):
-        for dx, ch in enumerate(row):
+        for dx, ch in enumerate(row[:width]):
             if ch == "#":
                 surface.set_at((x0 + dx, y0 + dy), SEG_ON)
 
@@ -419,25 +431,6 @@ def _draw_transport(surface: pygame.Surface, active: str, *, pressed: str | None
         _draw_icon(surface, rect[0] + icon_offset[0] + nudge, rect[1] + icon_offset[1] + nudge, name, active=active == name)
 
 
-# Slider bank: 2px track (dark+light), 2px ticks every 6px, 12px pitch,
-# 6 sliders -- all measured from the equalizer window directly. No
-# thumb/handle is visible in the source (a blank calibration state), so
-# the demo's slider levels and thumb positions are invented content.
-def _draw_sliders(surface: pygame.Surface, x0: int, y0: int, count: int, height: int, levels: list[float]) -> None:
-    for i in range(count):
-        sx = x0 + i * 12
-        for dy in range(height):
-            surface.set_at((sx, y0 + dy), BEZEL_DARK)
-            surface.set_at((sx + 1, y0 + dy), BEZEL_LIGHT)
-        for ty in range(0, height, 6):
-            surface.set_at((sx + 5, y0 + ty), BEZEL_LIGHT)
-            surface.set_at((sx + 6, y0 + ty), BEZEL_LIGHT)
-            surface.set_at((sx + 5, y0 + ty + 1), BEZEL_DARK)
-            surface.set_at((sx + 6, y0 + ty + 1), BEZEL_DARK)
-        thumb_y = y0 + int((1 - levels[i % len(levels)]) * (height - 3))
-        pygame.draw.rect(surface, BEZEL_DARK, (sx - 3, thumb_y, 9, 3))
-
-
 # "cd" logo, pixel-verified -- both windows show the literal same glyph
 # (re-measured 2026-08-25 against both instances to confirm).
 _CD_ROWS = (
@@ -485,40 +478,33 @@ def _draw_title_marquee(surface: pygame.Surface, x0: int, y0: int, cols: int, ce
             _draw_dot_glint(surface, x0 + col * 3, y0 + row * 3, GREEN_ON)
 
 
-# Window frames -- measured from Band A/the equalizer window directly:
-# both are a raised bevel (white top/left, grey bottom/right), no black
-# ring around them the way Bruce's Windows has. reuses
-# framework.window_chrome.bevel_rect, settling PLAN.md's open question
-# of whether CD Player should route its chrome through that module --
-# its own inner controls (readout, buttons) still don't, since those are
-# a different border style (sunken, or the 3-sided highlight above).
-# Both rects are window-local (each window renders onto its own Surface,
-# sized to its rect, at (0,0)) -- see _render_main_window/_render_eq_window.
-# The two are truly separate windows in the source, not one panel: each
-# has its own close button, can be dragged independently, and clicking
-# either brings it in front of the other (2026-08-25, playtesting).
+# Window frame -- measured from Band A directly: a raised bevel (white
+# top/left, grey bottom/right), no black ring around it the way Bruce's
+# Windows has. Reuses framework.window_chrome.bevel_rect, settling
+# PLAN.md's open question of whether CD Player should route its chrome
+# through that module -- its own inner controls (readout, buttons) still
+# don't, since those are a different border style (sunken, or the
+# top+left-only highlight above). Window-local (the window renders onto
+# its own Surface, sized to this rect, at (0,0)) -- see
+# CDPlayerMainWindow.draw. The equalizer companion window this demo used
+# to show alongside it (own close button, own "cd" logo, a 6-band slider
+# bank) was removed 2026-08-26 (playtesting: "remove the EQ window
+# entirely, but leave the EQ display on the CD pane") -- the small
+# per-column frequency swatch already on this window's own readout (see
+# `_draw_eq_bars`) covers what "the EQ display" meant.
 MAIN_WINDOW_RECT = (0, 0, 288, 32)
-EQ_WINDOW_RECT = (0, 0, 97, 54)
 READOUT_RECT = (19, 3, 224, 26)
 TITLE_ORIGIN = (21, 6)
 DIGITS_ORIGIN = (174, 5)
 STATUS_ORIGIN = (209, 2)
 CLOSE_ICON_OFFSET = (2, 2)
 CD_LOGO_OFFSET = (3, 18)
-EQ_CLOSE_OFFSET = (2, 1)
-EQ_DIVIDER_Y = 12
-EQ_CD_LOGO_POS = (7, 44)
-EQ_SLIDER_ORIGIN = (26, 18)
-EQ_SLIDER_HEIGHT = 36
-EQ_SLIDER_COUNT = 6
 
-# The demo canvas is bigger than the two windows themselves so there's
-# room to drag them apart -- they start docked together, matching the
-# source screenshot's own layout.
+# The demo canvas is bigger than the window itself so there's room to
+# drag it around in the standalone view.
 WIDTH, HEIGHT = 480, 180
-DESK_BG = (72, 76, 78)  # invented -- a neutral backdrop for the floating windows
+DESK_BG = (72, 76, 78)  # invented -- a neutral backdrop for the floating window
 MAIN_START_POS = (40, 24)
-EQ_START_POS = (40 + MAIN_WINDOW_RECT[2] + 2, 24)
 
 # Playback simulation constants -- all invented content, not measured.
 TRACK_LENGTH = 180.0  # seconds per fake track
@@ -529,7 +515,6 @@ TITLE_COLS = 50  # (168 - 21) // 3 + 1, matching the measured spectrum area
 TITLE_ROWS = 7  # == pixel_font.GLYPH_H, so marquee text needs no row offset
 TITLE_SCROLL_SPEED = 10.0  # dot-columns/sec, invented
 EQ_TICK = 0.06
-SLIDER_LEVELS = [0.6, 0.4, 0.7, 0.5, 0.55, 0.45]  # invented -- no thumb visible in the source
 
 
 class CDPlayerMainWindow(Demo):
@@ -564,7 +549,7 @@ class CDPlayerMainWindow(Demo):
         self._eq_phase = 0.0
         self._levels = [0.0] * EQ_BAR_COLS
         self._pressed: str | None = None
-        self.reveal_equalizer = False
+        self._status_mode = 0
         self.closed = False
         self._marquee_mode = "title"
         self._marquee_offset = 0.0
@@ -579,7 +564,10 @@ class CDPlayerMainWindow(Demo):
                 if rect.collidepoint(event.pos):
                     self._pressed = name
                     return
-            self.reveal_equalizer = True
+            # Repurposed 2026-08-26: this used to reveal the equalizer
+            # window (removed -- see module docstring); now a body click
+            # cycles the repeat/shuffle status indicator instead.
+            self._status_mode = (self._status_mode + 1) % STATUS_MODE_COUNT
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self._pressed = None
 
@@ -648,60 +636,26 @@ class CDPlayerMainWindow(Demo):
         dx, dy = DIGITS_ORIGIN
         _draw_digits(surface, dx, dy, readout, pitch=12)
         sx, sy = STATUS_ORIGIN
-        _draw_status_text(surface, sx, sy)
+        _draw_status_text(surface, sx, sy, self._status_mode)
         _draw_eq_bars(surface, sx, sy, self._levels)
 
         _draw_transport(surface, self._active_button(), pressed=self._pressed)
 
 
-class CDPlayerEqualizerWindow(Demo):
-    """The companion equalizer window, standalone: its own close button,
-    "cd" logo, and the 6-slider bank. No functional sliders yet (no
-    thumb/handle exists in the source to know how one should look while
-    being dragged, see module docstring) -- just the close control."""
-
-    NATIVE_SIZE = EQ_WINDOW_RECT[2:]
-
-    def __init__(self, *, text: str | None = None, **_ignored) -> None:
-        cx, cy = EQ_CLOSE_OFFSET
-        self.close_rect = pygame.Rect(cx - 2, cy - 1, 14, 13)
-        self.reset()
-
-    def reset(self) -> None:
-        self.closed = False
-
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.close_rect.collidepoint(event.pos):
-            self.closed = True
-
-    def draw(self, surface: pygame.Surface) -> None:
-        ew, eh = self.NATIVE_SIZE
-        bevel_rect(surface, (0, 0, ew, eh), raised=True)
-        ecx, ecy = EQ_CLOSE_OFFSET
-        _draw_icon(surface, ecx, ecy, "close")
-        pygame.draw.line(surface, BEZEL_DARK, (1, EQ_DIVIDER_Y), (ew - 2, EQ_DIVIDER_Y))
-        pygame.draw.line(surface, BEZEL_LIGHT, (1, EQ_DIVIDER_Y + 1), (ew - 2, EQ_DIVIDER_Y + 1))
-        _draw_cd_logo(surface, *EQ_CD_LOGO_POS)
-        sx0, sy0 = EQ_SLIDER_ORIGIN
-        _draw_sliders(surface, sx0, sy0, EQ_SLIDER_COUNT, EQ_SLIDER_HEIGHT, SLIDER_LEVELS)
-
-
 class CDPlayerDemo(Demo):
-    """Standalone combo view -- both windows on one canvas, for
+    """Standalone view -- the main window on its own backdrop, for
     `python -m retrodemos cd_player` (a single Demo, no desktop shell
-    around it to host two independent windows). The desktop shell itself
-    does *not* use this class: it opens `CDPlayerMainWindow` and
-    `CDPlayerEqualizerWindow` directly as two independent top-level
-    windows instead (see `desktop.py`'s own CD Player handling) --
-    nesting them inside a third wrapper window looked wrong once seen on
-    the real desktop (2026-08-25 playtesting: "should get real windows,
-    not appear in another window"). This class re-implements that same
-    per-window position/z-order/reveal/close bookkeeping at a smaller
-    scale so the standalone view keeps working the same way.
+    around it). The desktop shell doesn't use this class either: it opens
+    `CDPlayerMainWindow` directly as its own top-level window (see
+    `desktop.py`'s own CD Player handling).
 
-    The equalizer starts hidden, same as on the desktop -- clicking the
-    main window's body (not a button, not its close control) reveals it.
-    """
+    Down to one window as of 2026-08-26 (playtesting: "remove the EQ
+    window entirely, but leave the EQ display on the CD pane" -- the
+    small per-column frequency swatch on the main pane already covers
+    that, see `_draw_eq_bars`) -- this class used to juggle two windows'
+    drag/z-order/reveal/close state; now it's just enough to let the one
+    window be dragged around and closed (closing restarts it, there
+    being nothing else to show in this standalone view)."""
 
     NATIVE_SIZE = (WIDTH, HEIGHT)
 
@@ -710,82 +664,50 @@ class CDPlayerDemo(Demo):
 
     def reset(self) -> None:
         self.main = CDPlayerMainWindow()
-        self.eq = CDPlayerEqualizerWindow()
-        self._win_pos = {"main": list(MAIN_START_POS), "eq": list(EQ_START_POS)}
-        self._order: list[str] = ["main"]  # equalizer hidden until revealed
-        self._dragging: str | None = None
+        self._win_pos = list(MAIN_START_POS)
+        self._dragging = False
+        self._mouse_down = False  # tracks the press regardless of whether it also started a drag
         self._drag_offset = (0, 0)
-        self._mouse_down_key: str | None = None
 
-    def _demo(self, key: str) -> Demo:
-        return self.main if key == "main" else self.eq
-
-    def _window_rect(self, key: str) -> pygame.Rect:
-        return pygame.Rect(self._win_pos[key], self._demo(key).NATIVE_SIZE)
-
-    def _window_at(self, pos: tuple[int, int]) -> str | None:
-        for key in reversed(self._order):
-            if self._window_rect(key).collidepoint(pos):
-                return key
-        return None
-
-    def _focus(self, key: str) -> None:
-        self._order.remove(key)
-        self._order.append(key)
-
-    def _reveal_equalizer(self) -> None:
-        if "eq" not in self._order:
-            self._order.append("eq")
-        else:
-            self._focus("eq")
+    def _window_rect(self) -> pygame.Rect:
+        return pygame.Rect(self._win_pos, self.main.NATIVE_SIZE)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            key = self._window_at(event.pos)
-            if key is None:
+            if not self._window_rect().collidepoint(event.pos):
                 return
-            self._focus(key)
-            self._mouse_down_key = key
-            demo = self._demo(key)
-            wx, wy = self._win_pos[key]
+            wx, wy = self._win_pos
             local_pos = (event.pos[0] - wx, event.pos[1] - wy)
-            demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
-            if demo.closed:
-                demo.closed = False
-                self._order.remove(key)
+            self.main.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
+            if self.main.closed:
+                self.reset()
                 return
-            if key == "main" and self.main.reveal_equalizer:
-                self.main.reveal_equalizer = False
-                self._reveal_equalizer()
-            hit_control = demo.close_rect.collidepoint(local_pos) or any(
-                r.collidepoint(local_pos) for r in getattr(demo, "button_rects", {}).values()
+            self._mouse_down = True
+            hit_control = self.main.close_rect.collidepoint(local_pos) or any(
+                r.collidepoint(local_pos) for r in self.main.button_rects.values()
             )
             if not hit_control:
-                self._dragging = key
+                self._dragging = True
                 self._drag_offset = (event.pos[0] - wx, event.pos[1] - wy)
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self._mouse_down_key is not None and self._mouse_down_key in self._order:
-                demo = self._demo(self._mouse_down_key)
-                wx, wy = self._win_pos[self._mouse_down_key]
+            if self._mouse_down:
+                wx, wy = self._win_pos
                 local_pos = (event.pos[0] - wx, event.pos[1] - wy)
-                demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=local_pos, button=1))
-            self._dragging = None
-            self._mouse_down_key = None
-        elif event.type == pygame.MOUSEMOTION and self._dragging is not None:
+                self.main.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=local_pos, button=1))
+            self._dragging = False
+            self._mouse_down = False
+        elif event.type == pygame.MOUSEMOTION and self._dragging:
             ox, oy = self._drag_offset
-            self._win_pos[self._dragging] = [event.pos[0] - ox, event.pos[1] - oy]
+            self._win_pos = [event.pos[0] - ox, event.pos[1] - oy]
 
     def update(self, dt: float) -> None:
-        for key in self._order:
-            self._demo(key).update(dt)
+        self.main.update(dt)
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(DESK_BG)
-        for key in self._order:  # back to front, so the focused window ends up on top
-            demo = self._demo(key)
-            content = pygame.Surface(demo.NATIVE_SIZE)
-            demo.draw(content)
-            surface.blit(content, self._win_pos[key])
+        content = pygame.Surface(self.main.NATIVE_SIZE)
+        self.main.draw(content)
+        surface.blit(content, self._win_pos)
 
 
 DEMO_CLASS = CDPlayerDemo

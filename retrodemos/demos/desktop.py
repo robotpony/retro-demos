@@ -24,18 +24,21 @@ little utility programs left open together" attract-mode feel `PLAN.md`
 describes. Background windows aren't paused.
 
 Most demos get exactly one window through the generic chrome wrapper
-above. CD Player is the exception (2026-08-25 playtesting: "should get
-real windows, not appear in another window"): its main and equalizer
-panels already draw their own complete chrome (see
-`cd_player.py`'s module docstring), so wrapping them in a *second*,
-generic chrome read as a window inside a window. `_OpenWindow` supports
-a `chrome=False` mode for exactly this -- no generic wrapper, and
+above. A few draw their own complete chrome already (see each one's own
+module docstring) and would otherwise end up wrapped in a *second*,
+generic chrome -- a window inside a window (2026-08-25 playtesting, CD
+Player: "should get real windows, not appear in another window"; Tank
+Status Window hit the identical bug on 2026-08-26). `_OpenWindow`
+supports a `chrome=False` mode for exactly this -- no generic wrapper,
 close/drag hit-testing reads `close_rect`/`button_rects` straight off
-the demo instance instead of a chrome-supplied rect dict. Opening CD
-Player's icon opens only its main window; the equalizer starts hidden
-and is revealed by clicking the main window's body, both special-cased
-in `_open_cd_player_main`/`_reveal_cd_player_eq` rather than
-generalized -- the only demo that needs multi-window treatment so far.
+the demo instance instead of a chrome-supplied rect dict -- and
+`_CHROMELESS` lists which demo keys use it. CD Player used to need its
+own further special-casing on top of that (`_open_cd_player_main`/
+`_reveal_cd_player_eq`) for its separate equalizer companion window;
+that window was removed from the demo entirely on 2026-08-26 (see
+`cd_player.py`'s own module docstring), so CD Player is back to being
+just another single chromeless window like Tank Status Window, no
+special-casing left.
 
 A macOS-style top menu bar (2026-08-25, new content -- no source image
 for this either) sits above every window: white, exactly tall enough for
@@ -62,7 +65,7 @@ import pygame
 
 from retrodemos.demos.bruces_21 import Bruces21Demo
 from retrodemos.demos.bruces_windows import BruceWindowsDemo
-from retrodemos.demos.cd_player import CDPlayerEqualizerWindow, CDPlayerMainWindow
+from retrodemos.demos.cd_player import CDPlayerMainWindow
 from retrodemos.demos.cinqtris import CinqtrisDemo
 from retrodemos.demos.led import LedDemo
 from retrodemos.demos.led_ii import LedIIDemo
@@ -185,38 +188,28 @@ _ICON_GLYPHS: dict[str, tuple[str, ...]] = {
 }
 
 # (module key, display title, Demo class) -- a curated, fixed list, not a
-# generic directory scan like __main__.py's -- the desktop only ever shows
-# these eight icons, in this order. cd_player's class slot is None: it
-# doesn't open through the generic single-window path at all (see
-# _open_cd_player_main below) -- its icon and cascade position still come
-# from this table, but opening it is special-cased.
+# generic directory scan like __main__.py's -- the desktop only ever
+# shows these eight icons, in this order.
 _DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
     ("led", "LED", LedDemo),
     ("led_ii", "LED II", LedIIDemo),
     ("title", "TITLE", TitleDemo),
-    ("cd_player", "CD PLAYER", None),
+    ("cd_player", "CD PLAYER", CDPlayerMainWindow),
     ("bruces_windows", "WINDOWS", BruceWindowsDemo),
     ("cinqtris", "CINQTRIS", CinqtrisDemo),
     ("bruces_21", "BRUCE'S 21", Bruces21Demo),
     ("tank_status_window", "TANK STATUS", TankStatusWindowDemo),
 ]
 
-# cd_player's icon represents two independently-opened windows, not one
-# -- the icon should disable once its main window is open, whether or
-# not the equalizer has been revealed alongside it (see module docstring
-# on CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
-_ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
-
 # Demos whose own draw() already produces complete window chrome (own
 # border, own title bar) -- opened without the generic wrapper, same
 # "should get a real window, not a window inside a window" reasoning
-# CD Player's own two windows got (2026-08-25), but simple enough here
-# (one window, no dual-window bookkeeping) not to need CD Player's own
-# fully special-cased open path -- just skip the wrapper in _open_demo.
-# Tank Status Window added 2026-08-26: playtesting caught its generic
-# wrapper nesting WIN1.png's own red/black frame inside a second, plain
-# desktop window.
-_CHROMELESS = {"tank_status_window"}
+# (2026-08-25 playtesting, CD Player; 2026-08-26, Tank Status Window hit
+# the identical bug). Just skips the wrapper in _open_demo -- no other
+# special-casing needed now that CD Player is down to one window (its
+# equalizer companion window was removed 2026-08-26, see
+# cd_player.py's own module docstring).
+_CHROMELESS = {"cd_player", "tank_status_window"}
 
 # Hidden from the icon grid entirely (2026-08-26: dimmed-but-visible read
 # as clutter once there were 8 icons) -- Bruce's Windows started as the
@@ -232,13 +225,11 @@ _PERMANENTLY_DISABLED = {"bruces_windows"}
 # column without a gap -- computed once since _DEMO_ENTRIES is static.
 _VISIBLE_DEMO_ENTRIES = [entry for entry in _DEMO_ENTRIES if entry[0] not in _PERMANENTLY_DISABLED]
 
-# What the menu bar calls each open-window key -- most come straight from
-# _DEMO_ENTRIES, but CD Player's two chromeless windows (cd_player_main/
-# cd_player_eq) aren't in that table under those keys, so they get their
-# own two entries.
-_WINDOW_TITLES: dict[str, str] = {key: title for key, title, _cls in _DEMO_ENTRIES if key != "cd_player"}
-_WINDOW_TITLES["cd_player_main"] = "CD PLAYER"
-_WINDOW_TITLES["cd_player_eq"] = "EQUALIZER"
+# What the menu bar calls each open-window key -- comes straight from
+# _DEMO_ENTRIES now that every demo opens under its own key (CD Player's
+# old "cd_player_main"/"cd_player_eq" pair went away with its equalizer
+# companion window, 2026-08-26).
+_WINDOW_TITLES: dict[str, str] = {key: title for key, title, _cls in _DEMO_ENTRIES}
 
 # The command-key glyph, new pixel art like the icon glyphs above -- no
 # source to measure. Four square "loop" corners joined by a thin bridge
@@ -495,33 +486,6 @@ class DesktopDemo(Demo):
             CASCADE_BASE[1] + (n % CASCADE_WRAP) * CASCADE_STEP,
         )
 
-    def _open_cd_player_main(self) -> None:
-        # CD Player's two windows are opened directly as top-level desktop
-        # windows (chrome=False -- they draw their own complete chrome),
-        # not through _open_demo's single-window path. The equalizer
-        # isn't opened here at all -- it starts hidden, matching the
-        # source (see CDPlayerMainWindow's own docstring); clicking the
-        # main window's body reveals it (_handle_click below).
-        if "cd_player_main" in self._open:
-            self._focus("cd_player_main")
-            return
-        self._open["cd_player_main"] = _OpenWindow(
-            "cd_player_main", "", CDPlayerMainWindow(text=None), self._next_cascade_pos(), chrome=False
-        )
-        self._order.append("cd_player_main")
-
-    def _reveal_cd_player_eq(self) -> None:
-        if "cd_player_eq" in self._open:
-            self._focus("cd_player_eq")
-            return
-        main_pos = self._open["cd_player_main"].pos
-        main_w = self._open["cd_player_main"].size[0]
-        pos = (main_pos[0] + main_w + 4, main_pos[1])
-        self._open["cd_player_eq"] = _OpenWindow(
-            "cd_player_eq", "", CDPlayerEqualizerWindow(text=None), pos, chrome=False
-        )
-        self._order.append("cd_player_eq")
-
     def _focus(self, key: str) -> None:
         if key in self._order:
             self._order.remove(key)
@@ -624,7 +588,8 @@ class DesktopDemo(Demo):
             # controls, so ask it directly (close_rect/button_rects)
             # rather than a chrome-supplied rect dict. Any other body
             # click both starts a drag and gets forwarded to the demo --
-            # CD Player's main window uses that to reveal the equalizer.
+            # CD Player's main window uses that to cycle its repeat/
+            # shuffle status indicator (2026-08-26).
             self._focus(key)
             self._mouse_down_key = key
             local_pos = win.to_content_local(pos)
@@ -632,9 +597,6 @@ class DesktopDemo(Demo):
             if getattr(win.demo, "closed", False):
                 self._close(key)
                 return
-            if key == "cd_player_main" and getattr(win.demo, "reveal_equalizer", False):
-                win.demo.reveal_equalizer = False
-                self._reveal_cd_player_eq()
             close_rect = getattr(win.demo, "close_rect", None)
             button_rects = getattr(win.demo, "button_rects", {})
             hit_control = (close_rect is not None and close_rect.collidepoint(local_pos)) or any(
@@ -648,17 +610,13 @@ class DesktopDemo(Demo):
             if self._icon_disabled(demo_key):
                 continue
             if _icon_slot_rect(i).collidepoint(pos):
-                if demo_key == "cd_player":
-                    self._open_cd_player_main()
-                else:
-                    self._open_demo(demo_key, title, demo_cls)
+                self._open_demo(demo_key, title, demo_cls)
                 return
 
     def _icon_disabled(self, demo_key: str) -> bool:
         if demo_key in _PERMANENTLY_DISABLED:
             return True
-        open_key = _ICON_OPEN_KEY.get(demo_key, demo_key)
-        return open_key in self._open
+        return demo_key in self._open
 
     def update(self, dt: float) -> None:
         for key in self._order:

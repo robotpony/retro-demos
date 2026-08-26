@@ -11,11 +11,11 @@ import pygame
 from retrodemos.demos.cd_player import (
     CELL_H,
     CELL_W,
-    EQ_START_POS,
     MAIN_START_POS,
     PAUSE_DURATION,
     PAUSE_EVERY,
     SEG_ON,
+    STATUS_MODE_COUNT,
     TRACK_COUNT,
     TRACK_LENGTH,
     CDPlayerDemo,
@@ -200,76 +200,72 @@ def test_main_window_frame_is_byte_exact_excluding_dynamic_content():
     assert mismatches == []
 
 
-def test_windows_start_docked_with_the_equalizer_hidden():
+def test_window_starts_at_its_docked_position():
     demo = CDPlayerDemo()
-    assert demo._win_pos["main"] == list(MAIN_START_POS)
-    assert demo._win_pos["eq"] == list(EQ_START_POS)
-    # The equalizer is a genuinely separate window, hidden until revealed
-    # by clicking the main window's body (2026-08-25 playtesting).
-    assert demo._order == ["main"]
+    assert demo._win_pos == list(MAIN_START_POS)
 
 
 def _main_body_pos(demo: CDPlayerDemo) -> tuple[int, int]:
     """A point inside the main window that isn't its close button or any
     transport button -- deep in the readout box, well clear of both."""
-    wx, wy = demo._win_pos["main"]
+    wx, wy = demo._win_pos
     return (wx + 100, wy + 15)
 
 
-def test_clicking_the_main_windows_body_reveals_the_equalizer():
+def test_clicking_the_main_windows_body_cycles_the_status_indicator():
+    # Repurposed 2026-08-26 from revealing the (now-removed) equalizer
+    # window -- a body click now cycles the repeat/shuffle status text
+    # through its 3 states instead.
     demo = CDPlayerDemo()
-    assert "eq" not in demo._order
+    assert demo.main._status_mode == 0
     _click(demo, _main_body_pos(demo))
-    assert demo._order == ["main", "eq"]
+    assert demo.main._status_mode == 1
+    for _ in range(STATUS_MODE_COUNT - 1):
+        _click(demo, _main_body_pos(demo))
+    assert demo.main._status_mode == 0  # wraps back around
 
 
 def test_clicking_the_main_windows_body_starts_a_drag_too():
     demo = CDPlayerDemo()
-    start = demo._win_pos["main"][:]
+    start = demo._win_pos[:]
     grab = _main_body_pos(demo)
     demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=grab, button=1))
     demo.handle_event(pygame.event.Event(pygame.MOUSEMOTION, pos=(grab[0] + 20, grab[1] + 10), rel=(20, 10), buttons=(1, 0, 0)))
-    assert demo._win_pos["main"] == [start[0] + 20, start[1] + 10]
+    assert demo._win_pos == [start[0] + 20, start[1] + 10]
     demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=(grab[0] + 20, grab[1] + 10), button=1))
     # motion after release shouldn't keep dragging
     demo.handle_event(pygame.event.Event(pygame.MOUSEMOTION, pos=(grab[0] + 99, grab[1] + 99), rel=(79, 89), buttons=(0, 0, 0)))
-    assert demo._win_pos["main"] == [start[0] + 20, start[1] + 10]
+    assert demo._win_pos == [start[0] + 20, start[1] + 10]
 
 
-def test_clicking_a_transport_button_presses_it_without_dragging_or_revealing():
+def test_clicking_a_transport_button_presses_it_without_dragging_or_cycling_status():
     demo = CDPlayerDemo()
-    wx, wy = demo._win_pos["main"]
+    wx, wy = demo._win_pos
     stop_rect = demo.main.button_rects["stop"]
     pos = (wx + stop_rect.centerx, wy + stop_rect.centery)
     demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1))
     assert demo.main._pressed == "stop"
-    assert demo._dragging is None
-    assert "eq" not in demo._order
+    assert demo._dragging is False
+    assert demo.main._status_mode == 0
     demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1))
     assert demo.main._pressed is None
 
 
-def test_clicking_the_main_windows_close_button_closes_it():
+def test_clicking_the_close_button_restarts_the_standalone_view():
     demo = CDPlayerDemo()
-    wx, wy = demo._win_pos["main"]
+    wx, wy = demo._win_pos
     close = demo.main.close_rect
+    demo.main._track = 7
     _click(demo, (wx + close.centerx, wy + close.centery))
-    assert demo._order == []
+    # No second window to fall back to in the standalone view -- closing
+    # just restarts it (2026-08-26, once the equalizer companion window
+    # that used to sit alongside it was removed).
+    assert demo.main._track == 1
 
 
-def test_clicking_the_equalizers_close_button_closes_only_the_equalizer():
+def test_clicking_empty_background_does_not_start_a_drag():
     demo = CDPlayerDemo()
-    _click(demo, _main_body_pos(demo))  # reveal it first
-    assert demo._order == ["main", "eq"]
-    wx, wy = demo._win_pos["eq"]
-    close = demo.eq.close_rect
-    _click(demo, (wx + close.centerx, wy + close.centery))
-    assert demo._order == ["main"]
-
-
-def test_clicking_empty_background_does_not_change_focus_or_start_a_drag():
-    demo = CDPlayerDemo()
-    order_before = demo._order[:]
+    pos_before = demo._win_pos[:]
     _click(demo, (demo.NATIVE_SIZE[0] - 5, demo.NATIVE_SIZE[1] - 5))
-    assert demo._order == order_before
-    assert demo._dragging is None
+    assert demo._win_pos == pos_before
+    assert demo._dragging is False

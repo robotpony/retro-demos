@@ -199,46 +199,48 @@ def _cd_player_icon_index() -> int:
     return next(i for i, (key, _title, _cls) in enumerate(_DEMO_ENTRIES) if key == "cd_player")
 
 
-def test_clicking_the_cd_player_icon_opens_only_the_main_window_with_no_chrome():
+def test_clicking_the_cd_player_icon_opens_it_with_no_generic_chrome():
+    # CD Player is down to one window as of 2026-08-26 (its equalizer
+    # companion window was removed -- see cd_player.py's module
+    # docstring), so it now opens exactly like any other chromeless demo
+    # (Tank Status Window's own path), no more special-casing.
     demo = DesktopDemo()
     _click(demo, _icon_slot_rect(_cd_player_icon_index()).center)
-    assert list(demo._open.keys()) == ["cd_player_main"]
-    assert demo._open["cd_player_main"].chrome is False
+    assert list(demo._open.keys()) == ["cd_player"]
+    assert demo._open["cd_player"].chrome is False
 
 
-def test_the_cd_player_icon_stays_hidden_while_its_main_window_is_open():
+def test_the_cd_player_icon_stays_hidden_while_its_window_is_open():
     demo = DesktopDemo()
     slot = _icon_slot_rect(_cd_player_icon_index())
     _click(demo, slot.center)
     # clicking the same slot again shouldn't spawn a second window -- the
-    # icon is meant to be hidden/inert while cd_player_main is open, same
-    # contract every other demo's icon has.
+    # icon is meant to be hidden/inert while it's open, same contract
+    # every other demo's icon has.
     _click(demo, slot.center)
-    assert list(demo._open.keys()) == ["cd_player_main"]
+    assert list(demo._open.keys()) == ["cd_player"]
 
 
-def test_clicking_the_main_windows_body_reveals_the_equalizer_as_its_own_window():
+def test_clicking_the_main_windows_body_cycles_its_status_indicator():
     demo = DesktopDemo()
     _click(demo, _icon_slot_rect(_cd_player_icon_index()).center)
-    main = demo._open["cd_player_main"]
-    assert "cd_player_eq" not in demo._open
-    body_pos = (main.pos[0] + 100, main.pos[1] + 15)  # inside the readout box, not a button or close
+    win = demo._open["cd_player"]
+    assert win.demo._status_mode == 0
+    body_pos = (win.pos[0] + 100, win.pos[1] + 15)  # inside the readout box, not a button or close
     _click(demo, body_pos)
-    assert "cd_player_eq" in demo._open
-    assert demo._open["cd_player_eq"].chrome is False
-    assert demo._order[-1] == "cd_player_eq"
+    assert win.demo._status_mode == 1
 
 
-def test_closing_the_cd_player_main_window_reenables_its_icon():
+def test_closing_the_cd_player_window_reenables_its_icon():
     demo = DesktopDemo()
     _click(demo, _icon_slot_rect(_cd_player_icon_index()).center)
-    main = demo._open["cd_player_main"]
-    close = main.demo.close_rect
-    _click(demo, (main.pos[0] + close.centerx, main.pos[1] + close.centery))
-    assert "cd_player_main" not in demo._open
+    win = demo._open["cd_player"]
+    close = win.demo.close_rect
+    _click(demo, (win.pos[0] + close.centerx, win.pos[1] + close.centery))
+    assert "cd_player" not in demo._open
     # icon is clickable again
     _click(demo, _icon_slot_rect(_cd_player_icon_index()).center)
-    assert "cd_player_main" in demo._open
+    assert "cd_player" in demo._open
 
 
 def _menu_item_rect(item_id: str) -> pygame.Rect:

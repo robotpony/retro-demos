@@ -1,7 +1,7 @@
 # CD Player
 
 **Source:** `CDPLAYER.png`
-**Mode:** Interactive -- two draggable windows, simulated audio
+**Mode:** Interactive -- one draggable window, simulated audio
 **Build:** Done (`retrodemos/demos/cd_player.py`)
 
 ## What it shows
@@ -64,6 +64,35 @@ each catching a real mistake the previous one missed:
    to LED's own number-scroll phase -- and the small dot swatch beside
    "1AR" (previously a static copy of the source's own all-lit test
    pattern) now animates as a real per-column frequency bar meter.
+6. **Sixth pass**, same day, went back to `CDPLAYER.png` with a real
+   reconstruct-and-diff (the rigor `tank_status_window.py` was already
+   held to) instead of another round of eyeballing, after playtesting
+   flagged the buttons as still off, plus colours, borders, a stray
+   "black dot" near the readout's top-right corner, and the right side
+   of the window in general. Found: the window was 3px narrower than the
+   source; the readout box 1px narrow on its own right edge with its
+   mitered top-right corner filled solid black instead of left unset;
+   the transport sub-panel 1px short on its own bottom edge; every
+   transport button's right/bottom edges don't actually exist in the
+   source at all (two earlier theories -- "3-sided highlight", then
+   "4-sided with a shadow" -- were both wrong, caught by finally scanning
+   a face column clear of any icon glyph); the dividers between buttons
+   needed their own mitered T-junctions; and the stop/pause icons were
+   both missing their own bottom shadow row while play's taper cut off 2
+   rows early. All now covered by two byte-exact tests in
+   `tests/test_cd_player.py`. Separately, the small EQ swatch's colour
+   turned out to be a real measured gradient (green/yellow/cyan, from a
+   reference swatch in Band B, not Band A or C) rather than flat green,
+   and it needed a dim "off" background the same way the marquee did.
+   The equalizer companion window was removed from the demo entirely per
+   request ("remove the EQ window entirely, but leave the EQ display on
+   the CD pane" -- the per-column swatch already covers that); CD Player
+   is back to being one window, opening on the desktop exactly like Tank
+   Status Window (`desktop.py`'s `_CHROMELESS`, no more special-casing).
+   Clicking the main window's body, which used to reveal the equalizer,
+   now cycles the repeat/shuffle status indicator through 3 states
+   instead (full icon+"1AR", icon alone, blank) -- all sliced from the
+   one measured mask, no new font/weight introduced.
 
 Every piece is pixel-verified against Band A directly for the two real
 windows (not Band B, which is reference material only -- confirmed by
@@ -90,12 +119,11 @@ Band B's copies of the same icons):
   highlight (top/left/right) inside it -- a different style than the
   window frame's own bevel, and different again from Band B's flat-grey
   copies of the same icons.
-- **Slider bank**: track + tick geometry pixel-verified from the
-  equalizer window directly; no thumb/handle is visible in the source (a
-  blank calibration state), so the demo's slider levels are invented
-  content.
-- **"cd" logo**: pixel-verified glyph, the literal same glyph reused by
-  both windows.
+- **"cd" logo**: pixel-verified glyph.
+
+The equalizer window (own close button, "cd" logo, 6-band slider bank)
+was removed from the demo on 2026-08-26 (see the sixth pass above) --
+its slider-track geometry is no longer part of this demo.
 
 ## Behaviour
 
@@ -118,28 +146,27 @@ same reasoning Dooley's continuous design used):
 
 ## Interaction
 
-The main and equalizer windows are each draggable (click and hold
-anywhere on a window's body that isn't a button or the close control)
-and clicking either brings it in front of the other. This is the second
-interactive demo in the project after Bruce's Windows.
+The window is draggable (click and hold anywhere on its body that isn't
+a button or the close control). This was the second interactive demo in
+the project after Bruce's Windows.
 
-- **The equalizer starts hidden.** Clicking the main window's body
-  (not a transport button, not the close control) reveals it.
-- **Close buttons work.** Each window's own "X" closes just that
-  window.
+- **Close button works**, and closing the standalone view's one window
+  just restarts it (there's nothing else to fall back to once it's
+  closed).
 - **Transport buttons animate on press**: the highlight inverts and the
   icon nudges 1px, both invented (no pressed-state reference exists in
   the source) -- they don't yet control playback (see Open questions).
+- **Clicking the body cycles the status indicator** (full icon+"1AR",
+  icon alone, blank) -- repurposed 2026-08-26 from revealing the
+  now-removed equalizer window.
 
-On the desktop shell, CD Player's icon opens only the main window as a
-genuine top-level desktop window -- not wrapped in the desktop's own
-generic chrome, since that window already draws its own complete chrome
-and a second wrapper around it read as a window inside a window
-(2026-08-25 playtesting). The equalizer, once revealed, opens as its own
-independent top-level window too. Standalone (`python -m retrodemos
-cd_player`), `CDPlayerDemo` re-implements the same position/z-order/
-reveal/close bookkeeping at a smaller scale so the two windows behave
-identically without the desktop shell around them.
+On the desktop shell, CD Player's icon opens its one window directly --
+not wrapped in the desktop's own generic chrome, since it already draws
+its own complete chrome and a second wrapper around it read as a window
+inside a window (2026-08-25 playtesting; Tank Status Window hit the same
+bug later). Standalone (`python -m retrodemos cd_player`), `CDPlayerDemo`
+positions that one window on its own backdrop so it can still be dragged
+around outside the desktop shell.
 
 ## Assets
 
@@ -163,5 +190,7 @@ No real audio files are bundled or played, by design.
 - Transport buttons animate on press but don't change playback (stop
   doesn't stop, prev/next don't change track) -- whether they should is
   unresolved; the simulation currently drives itself.
-- The equalizer's sliders have no thumb/handle reference in the source
-  and aren't draggable yet -- only its close button is interactive.
+- The close-button/"cd"-logo corner (top-left of the window) hasn't had
+  the same reconstruct-and-diff pass the rest of the chrome got -- it
+  turned out to have its own small bevel box the close icon sits inside,
+  not yet re-measured.
