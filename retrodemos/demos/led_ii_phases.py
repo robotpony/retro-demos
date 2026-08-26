@@ -13,8 +13,12 @@ docs/led-ii.md and PLAN.md for the demo overview.
 SnakePhase was rebuilt 2026-08-24, porting the snake-chase minigame Title's
 own SnakePhase introduced the same day: two ChaseSnakes (graph_walk.py) hunt
 each other across the grid via a shared graph_walk.ChasePair, rather than a
-single Snake wandering at random. See SnakePhase's own docstring for the
-full rationale.
+single Snake wandering at random. It was rebuilt again 2026-08-26
+(playtesting) into a best-of-3 match via graph_walk.ChaseMatch, with a
+lower CHASE_CHANCE for more randomized paths; RipplePhase gained a
+graph_walk.Rocket launch trail before each burst ignites, and MarqueePhase
+now accelerates its scroll over the phase's run instead of holding one
+fixed interval. See each phase's own docstring for the full rationale.
 
 Every phase's specific timings (tick durations, snake/ripple sizes, hold
 lengths) are judgement calls, tuned for this display's much larger grid
@@ -30,7 +34,7 @@ import random
 
 import pygame
 
-from retrodemos.framework.graph_walk import Burst, ChasePair
+from retrodemos.framework.graph_walk import Burst, ChaseMatch, ChasePair, Rocket
 from retrodemos.framework.led_grid import DotMatrixDisplay, dot_grid_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
@@ -117,7 +121,8 @@ class MarqueePhase(Phase):
 
     DEFAULT_TEXT = "0123456789"
     GAP = "   "  # blank characters between repeats
-    SCROLL_INTERVAL = 0.04
+    SCROLL_START_INTERVAL = 0.05
+    SCROLL_END_INTERVAL = 0.012
     LAPS = 2
 
     def __init__(self, display: DotMatrixDisplay, rng: random.Random, text: str | None = None) -> None:
@@ -132,12 +137,22 @@ class MarqueePhase(Phase):
         self._offset = 0
         self._steps = 0
         self._total_steps = self.LAPS * self._text_width
-        self._ticker = Ticker(self.SCROLL_INTERVAL)
+        self._ticker = Ticker(self.SCROLL_START_INTERVAL)
+
+    def _current_interval(self) -> float:
+        # Speeds up over the phase's run (playtesting, 2026-08-26: "should
+        # also speed up as it animates") -- same start/end lerp PowerUpPhase's
+        # sweep already uses, just driven by scroll progress instead of the
+        # sweep's own step count.
+        progress = min(1.0, self._steps / self._total_steps)
+        return self.SCROLL_START_INTERVAL + (self.SCROLL_END_INTERVAL - self.SCROLL_START_INTERVAL) * progress
 
     def update(self, dt: float) -> bool:
+        self._ticker.interval = self._current_interval()
         for _ in range(self._ticker.advance(dt)):
             self._offset = (self._offset + 1) % self._text_width
             self._steps += 1
+            self._ticker.interval = self._current_interval()
         return self._steps >= self._total_steps
 
     def draw(self, surface: pygame.Surface) -> None:
@@ -162,29 +177,38 @@ def _chase_distance(a: tuple[int, int], b: tuple[int, int], x_weight: float, y_w
 class SnakePhase(Phase):
     """A chase minigame: two snakes spawn a quarter-width apart and hunt
     each other's head across the dot grid until one catches the other,
-    flashes WIN_FLASH_CYCLES times, and hands off to the ripple burst --
-    which now reads as this chase's own finish, not just the next scripted
-    beat.
+    flashes WIN_FLASH_CYCLES times, and scores a point -- then a fresh
+    round spawns immediately, best-of-WINS_NEEDED, until one side has won
+    enough rounds to take the match. Score is shown as dots stacked on
+    each snake's own starting side (column 0 for the left spawn, the
+    rightmost column for the right spawn) so it reads as that side's
+    tally, not a shared counter.
 
     Rebuilt 2026-08-24, porting Title's snake-chase minigame pattern (a
     plain wandering `Snake` picks its next cell uniformly at random, so its
     net drift over a few hundred steps is a random walk's sqrt(steps) --
     reading as wobbling in place rather than a hunt). The catch/win/flash
-    bookkeeping now lives in `graph_walk.ChasePair`, shared with Title's own
-    SnakePhase (`title_phases.py`) -- this class only supplies what's
+    bookkeeping lives in `graph_walk.ChasePair`, and the best-of-N match
+    bookkeeping added 2026-08-26 (playtesting: "restart until one snake
+    scores 3") lives in `graph_walk.ChaseMatch`, both shared with Title's
+    own SnakePhase (`title_phases.py`) -- this class only supplies what's
     specific to this grid: `_chase_distance`'s milder axis weighting (this
     grid is wide but far more square than Title's 256x8 strip) and the
-    quarter-width spawn rule sized to 83 columns instead of 256. See
-    PLAN.md's "Future framework polish" for the porting history."""
+    quarter-width spawn rule sized to 83 columns instead of 256.
+    CHASE_CHANCE was also lowered this pass (0.65 -> 0.45, same
+    playtesting: "snakes should take more randomized paths") so a round
+    reads as more of a scramble and less of a beeline. See PLAN.md's
+    "Future framework polish" for the porting history."""
 
     STEP_INTERVAL = 0.025
     MAX_LENGTH = 28
     MAX_STEPS = 900
-    CHASE_CHANCE = 0.65
+    CHASE_CHANCE = 0.45
     X_WEIGHT = 2.0
     Y_WEIGHT = 1.0
     WIN_FLASH_INTERVAL = 0.12
     WIN_FLASH_CYCLES = 5
+    WINS_NEEDED = 3
 
     def reset(self) -> None:
         cols, rows = self.display.cols, self.display.ROWS
@@ -193,30 +217,45 @@ class SnakePhase(Phase):
         def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
             return _chase_distance(a, b, self.X_WEIGHT, self.Y_WEIGHT)
 
-        left_start = (self.rng.randrange(0, cols // 4), self.rng.randrange(rows))
-        right_start = (self.rng.randrange(3 * cols // 4, cols), self.rng.randrange(rows))
-        self._pair = ChasePair(
-            graph, left_start, right_start, self.MAX_LENGTH, self.rng, distance, self.CHASE_CHANCE,
-            self.MAX_STEPS, self.WIN_FLASH_CYCLES,
-        )
+        def make_round() -> ChasePair:
+            left_start = (self.rng.randrange(0, cols // 4), self.rng.randrange(rows))
+            right_start = (self.rng.randrange(3 * cols // 4, cols), self.rng.randrange(rows))
+            return ChasePair(
+                graph, left_start, right_start, self.MAX_LENGTH, self.rng, distance, self.CHASE_CHANCE,
+                self.MAX_STEPS, self.WIN_FLASH_CYCLES,
+            )
+
+        self._match = ChaseMatch(make_round, self.WINS_NEEDED)
         self._step_ticker = Ticker(self.STEP_INTERVAL)
         self._flash_ticker = Ticker(self.WIN_FLASH_INTERVAL)
 
+    def _score_cells(self) -> set[tuple[int, int]]:
+        left_col, right_col = 0, self.display.cols - 1
+        cells = {(left_col, row) for row in range(self._match.score[0])}
+        cells |= {(right_col, row) for row in range(self._match.score[1])}
+        return cells
+
     def update(self, dt: float) -> bool:
-        if not self._pair.resolved:
+        pair = self._match.round
+        if not pair.resolved:
             for _ in range(self._step_ticker.advance(dt)):
-                self._pair.step()
-                if self._pair.resolved:
+                pair.step()
+                if pair.resolved:
                     break
-            return False
-        for _ in range(self._flash_ticker.advance(dt)):
-            self._pair.flash_tick()
-            if self._pair.finished:
-                break
-        return self._pair.finished
+        else:
+            for _ in range(self._flash_ticker.advance(dt)):
+                pair.flash_tick()
+                if pair.finished:
+                    break
+            if pair.finished:
+                self._match.update()
+                if not self._match.finished:
+                    self._step_ticker.reset()
+                    self._flash_ticker.reset()
+        return self._match.finished
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.display.render_raw(surface, self._pair.lit_cells())
+        self.display.render_raw(surface, self._match.round.lit_cells() | self._score_cells())
 
 
 class RipplePhase(Phase):
@@ -232,13 +271,20 @@ class RipplePhase(Phase):
 
     Tuned up on request (2026-08-24): more particles, a bigger radius given
     how much more room this grid has than LED's, and varying brightness
-    instead of a flat lit/unlit ring."""
+    instead of a flat lit/unlit ring. A rocket lead-in was added
+    2026-08-26 (playtesting: fireworks "need to have the rocket portion
+    ... flies to the centre point, then the explosion happens"): before
+    each burst ignites, a `graph_walk.Rocket` climbs straight up from the
+    bottom row to the burst's own target column/row, and only then does
+    the burst itself begin expanding -- same launch-then-ignite shape
+    Title's own FireworksPhase now uses."""
 
     REPEATS = 6
     RING_INTERVAL = 0.015
     MAX_RING = 24
     SPARK_COUNT = 24
     FADE_DURATION = 0.5
+    ROCKET_DURATION = 0.3
 
     def reset(self) -> None:
         self._graph = dot_grid_adjacency(self.display.cols, self.display.ROWS)
@@ -246,11 +292,18 @@ class RipplePhase(Phase):
         self._start_new_burst()
 
     def _start_new_burst(self) -> None:
-        start = (self.rng.randrange(self.display.cols), self.rng.randrange(self.display.ROWS))
-        self._burst = Burst(self._graph, start, self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng)
+        target = (self.rng.randrange(self.display.cols), self.rng.randrange(self.display.ROWS))
+        self._rocket = Rocket((target[0], self.display.ROWS - 1), target, self.ROCKET_DURATION)
+        self._target = target
+        self._burst: Burst | None = None
         self._ticker = Ticker(self.RING_INTERVAL)
 
     def update(self, dt: float) -> bool:
+        if self._burst is None:
+            self._rocket.age(dt)
+            if not self._rocket.done:
+                return False
+            self._burst = Burst(self._graph, self._target, self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng)
         self._burst.age(dt)
         if self._burst.is_expanding:
             for _ in range(self._ticker.advance(dt)):
@@ -267,7 +320,10 @@ class RipplePhase(Phase):
         return False
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.display.render_raw(surface, self._burst.intensities())
+        if self._burst is None:
+            self.display.render_raw(surface, {self._rocket.position(): 1.0})
+        else:
+            self.display.render_raw(surface, self._burst.intensities())
 
 
 class WordsPhase(Phase):

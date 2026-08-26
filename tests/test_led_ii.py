@@ -74,7 +74,8 @@ def test_powerup_phase_progresses_through_its_stages():
 def test_snake_phase_spawns_a_quarter_width_apart():
     display = DotMatrixDisplay(cols=COLS)
     phase = SnakePhase(display, random.Random(0))
-    left_col, right_col = phase._pair.a.body[0][0], phase._pair.b.body[0][0]
+    pair = phase._match.round
+    left_col, right_col = pair.a.body[0][0], pair.b.body[0][0]
     assert left_col < display.cols // 4
     assert right_col >= 3 * display.cols // 4
 
@@ -84,26 +85,64 @@ def test_snake_phase_resolves_with_a_winner_and_finishes_after_flashing():
     phase = SnakePhase(display, random.Random(0))
     resolved_at = None
     finished = False
-    for i in range(2000):
+    for i in range(20000):
         if phase.update(0.05):
             finished = True
             break
-        if resolved_at is None and phase._pair.resolved:
+        if resolved_at is None and phase._match.round.resolved:
             resolved_at = i
     assert finished
     assert resolved_at is not None
-    assert phase._pair.winner in (phase._pair.a, phase._pair.b)
 
 
 def test_snake_phase_grows_bodies_up_to_max_length():
     display = DotMatrixDisplay(cols=COLS)
     phase = SnakePhase(display, random.Random(0))
     max_len_seen = 0
-    for _ in range(2000):
+    for _ in range(20000):
         if phase.update(0.05):
             break
-        max_len_seen = max(max_len_seen, len(phase._pair.a.body), len(phase._pair.b.body))
+        pair = phase._match.round
+        max_len_seen = max(max_len_seen, len(pair.a.body), len(pair.b.body))
     assert max_len_seen == phase.MAX_LENGTH
+
+
+def test_snake_phase_is_a_best_of_n_match_scored_on_each_snakes_own_side():
+    # 2026-08-26 playtesting: "restart until one snake scores 3 (score
+    # tracked as dots on each snake's own starting side)".
+    display = DotMatrixDisplay(cols=COLS)
+    phase = SnakePhase(display, random.Random(0))
+    rounds_seen = 1
+    last_round = phase._match.round
+    finished = False
+    for _ in range(20000):
+        if phase.update(0.05):
+            finished = True
+            break
+        if phase._match.round is not last_round:
+            rounds_seen += 1
+            last_round = phase._match.round
+    assert finished
+    assert phase._match.finished
+    assert phase._match.score[phase._match.match_winner] == phase.WINS_NEEDED
+    assert rounds_seen >= phase.WINS_NEEDED
+    # score dots land on the left column for side 0, right column for side 1
+    score_cells = phase._score_cells()
+    left_col, right_col = 0, display.cols - 1
+    assert all(col in (left_col, right_col) for col, _row in score_cells)
+
+
+def test_ripple_phase_launches_a_rocket_before_the_burst_ignites():
+    display = DotMatrixDisplay(cols=COLS)
+    phase = RipplePhase(display, random.Random(0))
+    assert phase._burst is None  # starts mid-launch, not already exploding
+    launch_col = phase._rocket.target[0]
+    assert phase._rocket.start == (launch_col, display.ROWS - 1)
+    for _ in range(50):
+        phase.update(0.05)
+        if phase._burst is not None:
+            break
+    assert phase._burst is not None
 
 
 def test_ripple_phase_repeats_and_finishes():
