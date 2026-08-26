@@ -233,3 +233,10 @@ def test_title_demo_runs_headlessly():
 
     demo = TitleDemo()
     run(demo, scale=2, fps=1000, max_frames=5)
+
+
+def test_bruces_21_demo_runs_headlessly():
+    from retrodemos.demos.bruces_21 import Bruces21Demo
+
+    demo = Bruces21Demo()
+    run(demo, scale=2, fps=1000, max_frames=5)
