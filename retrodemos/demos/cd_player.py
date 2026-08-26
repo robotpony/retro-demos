@@ -78,6 +78,29 @@ slider bank doesn't have room to show. Both reuse Band C's measured
 green-on/red-off meter colours (`GREEN_ON`/`GREEN_OFF`) rather than the
 static readout's plain red, since both are now genuine meters, not
 fixed text.
+
+A fourth pass the same day (playtesting again: "buttons still off",
+"colours off", "borders off", "black dot top right", "right borders
+off") went back to `images/CDPLAYER.png` with the reconstruct-and-diff
+rigor `tank_status_window.py` uses, rather than re-eyeballing: the
+window was 3px narrower than the source (285 vs. the real 288), the
+readout box 1px narrower on its own right edge, the transport sub-panel
+1px short on its own bottom edge, every transport button's right/bottom
+edges turned out not to exist at all (measured chrome is top+left
+highlight only -- the earlier "3-sided" and "4-sided-with-shadow"
+theories were both wrong, caught by scanning a face column clear of any
+icon glyph instead of one that happened to clip one), the divider lines
+between buttons needed their own mitered T-junctions where they meet a
+button's own left edge, stop/pause both turned out to be missing their
+icon's bottom shadow row, and play's own taper was truncated 2 rows
+early. All of it is now covered by
+`tests/test_cd_player.py::test_transport_panel_is_byte_exact_against_the_source_image`
+and `test_main_window_frame_is_byte_exact_excluding_dynamic_content` --
+matching every pixel except the readout/status text's own dynamic
+content (never comparable to the source's fixed calibration display) and
+the close-button/"cd"-logo corner, which turned out to have its own
+small bevel box not yet re-measured -- a known remaining gap, not a
+regression.
 """
 
 from __future__ import annotations
@@ -284,13 +307,21 @@ def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fil
     """A sunken bevel (grey top/left, white bottom/right), mitered the
     same way `framework.window_chrome.bevel_rect` is. That helper always
     fills PANEL first, which doesn't fit the readout box's black
-    interior, so this is its own small sibling rather than a reuse."""
+    interior, so this is its own small sibling rather than a reuse.
+    The two mitered corners (top-right, bottom-left) always read as the
+    surrounding window's own PANEL, regardless of `fill` -- with a black
+    `fill` (the readout box) that corner pixel was otherwise left black
+    instead of unset, a real bug (playtesting, 2026-08-26: "black dot top
+    right of CD display") transport's own PANEL-on-PANEL fill happened to
+    hide."""
     x, y, w, h = rect
     pygame.draw.rect(surface, fill, rect)
     pygame.draw.line(surface, BEZEL_DARK, (x, y), (x + w - 2, y))
     pygame.draw.line(surface, BEZEL_DARK, (x, y), (x, y + h - 2))
     pygame.draw.line(surface, BEZEL_LIGHT, (x + w - 1, y + 1), (x + w - 1, y + h - 1))
     pygame.draw.line(surface, BEZEL_LIGHT, (x + 1, y + h - 1), (x + w - 1, y + h - 1))
+    surface.set_at((x + w - 1, y), PANEL)
+    surface.set_at((x, y + h - 1), PANEL)
 
 
 # Transport sub-panel: measured directly from Band A (x247-283, y3-28),
@@ -299,7 +330,7 @@ def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fil
 # here vs. Band B's flat grey), so Band B was reference for icon shapes
 # only, never for chrome. 5 buttons: prev/next on top, stop/pause/play
 # below -- there is no 6th "eject" button in the real window.
-_TRANSPORT_RECT = (247, 3, 38, 25)
+_TRANSPORT_RECT = (247, 3, 38, 26)
 # icon_offset re-measured again 2026-08-26 (playtesting: still visibly
 # off-centre against the source, bleeding past the button edges) -- the
 # 2026-08-25 pass fixed the vertical clipping but never actually solved
@@ -446,7 +477,7 @@ def _draw_title_marquee(surface: pygame.Surface, x0: int, y0: int, cols: int, ce
 # either brings it in front of the other (2026-08-25, playtesting).
 MAIN_WINDOW_RECT = (0, 0, 288, 32)
 EQ_WINDOW_RECT = (0, 0, 97, 54)
-READOUT_RECT = (19, 3, 223, 26)
+READOUT_RECT = (19, 3, 224, 26)
 TITLE_ORIGIN = (21, 6)
 DIGITS_ORIGIN = (174, 5)
 STATUS_ORIGIN = (209, 2)

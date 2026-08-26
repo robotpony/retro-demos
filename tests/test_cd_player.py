@@ -19,6 +19,7 @@ from retrodemos.demos.cd_player import (
     TRACK_COUNT,
     TRACK_LENGTH,
     CDPlayerDemo,
+    CDPlayerMainWindow,
     _draw_digit,
     _draw_transport,
 )
@@ -150,7 +151,7 @@ def test_transport_panel_is_byte_exact_against_the_source_image():
     # Playtesting (2026-08-26): button positions, colours, and borders
     # were all still off. Re-measured from scratch and verified here the
     # same way tank_status_window's own chrome is -- against the actual
-    # source pixels, not by eye. Covers x=247..284, y=3..27 of Band A
+    # source pixels, not by eye. Covers x=247..284, y=3..28 of Band A
     # (images/CDPLAYER.png), the sunken sub-panel plus all 5 buttons with
     # no button active/pressed, matching the source's own static state.
     src = pygame.image.load("images/CDPLAYER.png")
@@ -159,9 +160,42 @@ def test_transport_panel_is_byte_exact_against_the_source_image():
     _draw_transport(mine, active="", pressed=None)
     mismatches = [
         (x, y)
-        for y in range(3, 28)
+        for y in range(3, 29)
         for x in range(247, 285)
         if mine.get_at((x, y))[:3] != src.get_at((x, y))[:3]
+    ]
+    assert mismatches == []
+
+
+def test_main_window_frame_is_byte_exact_excluding_dynamic_content():
+    # Same idea, wider net: everything in the main window except the
+    # readout's own interior (dynamic marquee/digits/status -- invented
+    # content, not comparable to the source's own static calibration
+    # display) and the close-button/"cd"-logo corner (a known remaining
+    # gap, not yet re-measured -- see cd_player.py's module docstring).
+    # Catches the readout box's own mitered-corner bug (2026-08-26:
+    # "black dot top right of CD display") and its 1px-narrow width
+    # ("right borders off").
+    from retrodemos.demos.cd_player import MAIN_WINDOW_RECT, READOUT_RECT
+
+    src = pygame.image.load("images/CDPLAYER.png")
+    demo = CDPlayerMainWindow()
+    mine = pygame.Surface(demo.NATIVE_SIZE)
+    demo.draw(mine)
+    rx, ry, rw, rh = READOUT_RECT
+    w, h = MAIN_WINDOW_RECT[2:]
+
+    def excluded(x: int, y: int) -> bool:
+        in_readout_interior = rx + 1 <= x < rx + rw - 1 and ry + 1 <= y < ry + rh - 1
+        in_transport = 247 <= x < 285 and 3 <= y < 29
+        in_close_corner = x < 16 and y < 18
+        return in_readout_interior or in_transport or in_close_corner
+
+    mismatches = [
+        (x, y)
+        for y in range(h)
+        for x in range(w)
+        if not excluded(x, y) and mine.get_at((x, y))[:3] != src.get_at((x, y))[:3]
     ]
     assert mismatches == []
 
