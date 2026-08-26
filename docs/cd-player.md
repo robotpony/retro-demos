@@ -1,53 +1,88 @@
 # CD Player
 
 **Source:** `CDPLAYER.png`
-**Mode:** Automated attract-mode
+**Mode:** Interactive -- two draggable windows, simulated audio
 **Build:** Done (`retrodemos/demos/cd_player.py`)
 
 ## What it shows
 
 `CDPLAYER.png` (384x78) turned out not to be one coherent screenshot, the
 same surprise Title's and Dooley's source images held: it bundles three
-stacked reference bands. Band A (y0-28) and Band B (y30-53) are two
-differently-sized captures of the same widget vocabulary (transport
-buttons, a "cd" logo, a slider bank); Band C (y56-77) is a separate
-full-width level-meter strip. Built around Band B (confirmed with Bruce,
-2026-08-24) since it's the larger, more detailed capture, and its long
-18-cell readout doubles as a segment-shape calibration strip.
+stacked reference bands. Band A (x0-284, y0-31) is the **main player
+window**: close button, "cd" logo, a wide readout box (spectrum dots, a
+3-digit counter, a "repeat/shuffle/1AR" status cluster), and 5 transport
+buttons. A companion **equalizer window** sits beside it (x287-383,
+y0-53, taller than the main window since it isn't split at y31 the way
+the main window is): its own close button, own "cd" logo, and a 6-band
+slider bank. Band B (y32-53, x0-247) is a sprite/reference strip below
+the main window, not part of any real window -- icon and digit-shape
+reference only, same role Dooley's own reference material played. Band C
+(y56-77) is a separate full-width level-meter strip, reference for the
+meter's colours, pitch, and dot shape, not a UI element of its own.
 
-A 2026-08-25 re-verification (connected-component style, same method that
-caught Bruce's Windows' bevel bugs) found the first pass had two real
-mistakes, both now fixed:
+Getting here took three playtesting-driven review passes on 2026-08-25,
+each catching a real mistake the previous one missed:
 
-- The 18-cell readout isn't a calibration strip spelling "0123456789" --
-  every cell has all seven segments lit (a segment-test pattern,
-  alternating red/green per position for visibility, matching Band A's
-  own all-lit "888"). There's no source data for individual digit shapes,
-  so the "6 has no top bar, 9 has no bottom bar" quirks the first pass
-  claimed were fabricated, not measured. The font now uses the standard
-  closed 6/9 forms instead, with the segment geometry itself (each
-  segment's exact tapered pixel shape) still pixel-measured from that
-  all-lit pattern.
-- Every box border in the source -- readout, meter, transport buttons --
-  is a flat single-tone grey outline, not a two-tone raised/sunken bevel.
-  The first pass invented a bevel that isn't there.
+1. **First pass** fixed real box-border and digit-font mistakes (an
+   invented bevel that isn't in the source; "6 has no top bar, 9 has no
+   bottom bar" quirks that turned out to be fabricated -- the readout is
+   actually an all-segments-lit test pattern, not a per-digit
+   calibration strip) but still composited everything into one loosely-
+   arranged panel, not the two actual windows the source shows.
+2. **Second pass** rebuilt the layout around the real structure: two
+   window frames side by side, each with its own close button and "cd"
+   logo, the dot-matrix spectrum living *inside* the main readout box
+   (not a separate meter panel underneath), 5 transport buttons (not 6 --
+   the extra "eject" icon only exists in Band B's reference capture,
+   never in the real window), and 6 sliders (not 4).
+3. **Third pass** fixed two more misses: the meter's "dots" are a
+   genuine 2px NW-SE diagonal glint, not a single pixel (confirmed
+   against both the spectrum area and Band C directly); and the main and
+   equalizer windows are truly separate in the source -- dragging one
+   reveals/reorders the other -- so the demo needed to become interactive
+   rather than draw them as one fixed composite.
+4. **Fourth pass** (playtesting the desktop shell) found three more real
+   problems, not cosmetic ones: the transport button icons were
+   positioned using the wrong offset (up to 4px too far down, clipping
+   most of the glyph); the two windows, when opened from the desktop,
+   were nested inside a *third*, generic wrapper window, reading as a
+   window inside a window; and the equalizer was visible by default
+   instead of hidden until revealed. All three fixed -- icon offsets
+   re-measured directly, the two windows now open as genuine independent
+   top-level desktop windows (`desktop.py`'s `_open_cd_player_main`/
+   `_reveal_cd_player_eq`), and the equalizer starts closed. Transport
+   buttons also gained a press animation (inverted highlight + 1px
+   nudge) on click -- invented, no source data exists for a pressed
+   state -- and their close buttons now actually close their window.
 
+Every piece is pixel-verified against Band A directly for the two real
+windows (not Band B, which is reference material only -- confirmed by
+finding Band A's own transport buttons use a different border style than
+Band B's copies of the same icons):
+
+- **Window frames**: a raised bevel (white top/left, grey bottom/right),
+  no black ring -- routed through `framework/window_chrome.py`'s
+  `bevel_rect`, the first non-Bruce's-Windows caller of that module.
+- **Readout box**: sunken (reversed bevel), black fill.
 - **Numeric LED readout**: pixel-verified segment geometry (11x21 per
-  cell, with the hexagonal tapered-end shape real LED segments have),
-  single colour (Band A's own measured red), showing track number + time.
-- **Transport buttons**: all 6 icons (prev, next, stop, pause, play, close)
-  pixel-verified glyphs extracted from Band B.
-- **Level meter**: 1px dots on a 3px pitch, red/green, colours used
-  directly from the source (no invented dimness needed -- Band C already
-  shows both).
-- **Slider bank**: track + tick geometry pixel-verified from Band B; no
-  thumb/handle is visible in the source (a blank calibration state), so
-  the demo's slider levels and thumb positions are invented content.
-- **"cd" logo**: pixel-verified glyph from Band B.
-- Overall panel layout (where each piece sits relative to the others)
-  isn't a measurement -- Band B's own pieces aren't laid out as one
-  coherent window, so composing them into a single CD Player face was
-  this build's own design call.
+  cell, the hexagonal tapered-end shape real LED segments have), single
+  colour (measured red), 3 digits at a 12px pitch.
+- **Dot-matrix spectrum + level meter**: pixel-verified 2px NW-SE
+  diagonal dot shape at a 3px pitch, red/green, colours used directly
+  from the source.
+- **Status cluster** ("repeat/shuffle/1AR" text plus a small dense dot
+  swatch): no pixel font was built for this one-off text; it's copied
+  verbatim as a lit/unlit pixel mask, the same approach as the icons.
+- **Transport buttons**: sunken sub-panel, each button a light 3-sided
+  highlight (top/left/right) inside it -- a different style than the
+  window frame's own bevel, and different again from Band B's flat-grey
+  copies of the same icons.
+- **Slider bank**: track + tick geometry pixel-verified from the
+  equalizer window directly; no thumb/handle is visible in the source (a
+  blank calibration state), so the demo's slider levels are invented
+  content.
+- **"cd" logo**: pixel-verified glyph, the literal same glyph reused by
+  both windows.
 
 ## Behaviour
 
@@ -61,22 +96,43 @@ same reasoning Dooley's continuous design used):
 - Playback pauses for `PAUSE_DURATION` (3s) every `PAUSE_EVERY` (25s) of
   play, and the transport buttons pick out "play" or "pause" (its icon
   picked out in red) to match.
-- The level meter fakes a waveform (summed sine curves, invented, not a
-  real audio analysis) that goes quiet while paused.
+- The dot-matrix meter fakes a waveform (summed sine curves, invented,
+  not a real audio analysis) that goes quiet while paused.
 
 ## Interaction
 
-None beyond the shared quit/pause controls.
+The main and equalizer windows are each draggable (click and hold
+anywhere on a window's body that isn't a button or the close control)
+and clicking either brings it in front of the other. This is the second
+interactive demo in the project after Bruce's Windows.
+
+- **The equalizer starts hidden.** Clicking the main window's body
+  (not a transport button, not the close control) reveals it.
+- **Close buttons work.** Each window's own "X" closes just that
+  window.
+- **Transport buttons animate on press**: the highlight inverts and the
+  icon nudges 1px, both invented (no pressed-state reference exists in
+  the source) -- they don't yet control playback (see Open questions).
+
+On the desktop shell, CD Player's icon opens only the main window as a
+genuine top-level desktop window -- not wrapped in the desktop's own
+generic chrome, since that window already draws its own complete chrome
+and a second wrapper around it read as a window inside a window
+(2026-08-25 playtesting). The equalizer, once revealed, opens as its own
+independent top-level window too. Standalone (`python -m retrodemos
+cd_player`), `CDPlayerDemo` re-implements the same position/z-order/
+reveal/close bookkeeping at a smaller scale so the two windows behave
+identically without the desktop shell around them.
 
 ## Assets
 
-No shared framework renderer -- `cd_player.py` draws its own chrome
-directly (digit font, icons, meter, sliders, logo), matching
-`PLAN.md`'s "Window chrome" reasoning for why CD Player, Bruce's Windows,
-and Tank Status Window each draw their own borders independently rather
-than sharing one. No sprite sheet exists; everything is pixel-verified
-coordinate/glyph data extracted from `CDPLAYER.png`, same method as the
-LED-family renderers (`docs/pixel-archaeology.md`).
+Its window frames route through `framework/window_chrome.py`'s
+`bevel_rect` (added 2026-08-25); its inner controls (readout, transport
+buttons) are still custom-drawn, since those use different border
+styles than that shared helper provides. No sprite sheet exists;
+everything is pixel-verified coordinate/glyph data extracted from
+`CDPLAYER.png`, same method as the LED-family renderers
+(`docs/pixel-archaeology.md`).
 
 ## Notes
 
@@ -87,3 +143,8 @@ No real audio files are bundled or played, by design.
 - Whether the fake waveform should look more musical (recognizable peaks
   tied to a "song" rather than pure summed sine curves) is unresolved --
   built simple for now.
+- Transport buttons animate on press but don't change playback (stop
+  doesn't stop, prev/next don't change track) -- whether they should is
+  unresolved; the simulation currently drives itself.
+- The equalizer's sliders have no thumb/handle reference in the source
+  and aren't draggable yet -- only its close button is interactive.

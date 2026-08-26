@@ -17,6 +17,20 @@ focuses its existing window instead of spawning a second one); every open
 demo keeps running its own `update(dt)` even when not focused, the same
 "several little utility programs left open together" attract-mode feel
 `PLAN.md` describes. Background windows aren't paused.
+
+Most demos get exactly one window through the generic chrome wrapper
+above. CD Player is the exception (2026-08-25 playtesting: "should get
+real windows, not appear in another window"): its main and equalizer
+panels already draw their own complete chrome (see
+`cd_player.py`'s module docstring), so wrapping them in a *second*,
+generic chrome read as a window inside a window. `_OpenWindow` supports
+a `chrome=False` mode for exactly this -- no generic wrapper, and
+close/drag hit-testing reads `close_rect`/`button_rects` straight off
+the demo instance instead of a chrome-supplied rect dict. Opening CD
+Player's icon opens only its main window; the equalizer starts hidden
+and is revealed by clicking the main window's body, both special-cased
+in `_open_cd_player_main`/`_reveal_cd_player_eq` rather than
+generalized -- the only demo that needs multi-window treatment so far.
 """
 
 from __future__ import annotations
@@ -24,7 +38,7 @@ from __future__ import annotations
 import pygame
 
 from retrodemos.demos.bruces_windows import BruceWindowsDemo
-from retrodemos.demos.cd_player import CDPlayerDemo
+from retrodemos.demos.cd_player import CDPlayerEqualizerWindow, CDPlayerMainWindow
 from retrodemos.demos.led import LedDemo
 from retrodemos.demos.led_ii import LedIIDemo
 from retrodemos.demos.title import TitleDemo
@@ -95,14 +109,23 @@ _ICON_GLYPHS: dict[str, tuple[str, ...]] = {
 
 # (module key, display title, Demo class) -- a curated, fixed list, not a
 # generic directory scan like __main__.py's -- the desktop only ever shows
-# these five icons, in this order.
-_DEMO_ENTRIES: list[tuple[str, str, type[Demo]]] = [
+# these five icons, in this order. cd_player's class slot is None: it
+# doesn't open through the generic single-window path at all (see
+# _open_cd_player_main below) -- its icon and cascade position still come
+# from this table, but opening it is special-cased.
+_DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
     ("led", "LED", LedDemo),
     ("led_ii", "LED II", LedIIDemo),
     ("title", "TITLE", TitleDemo),
-    ("cd_player", "CD PLAYER", CDPlayerDemo),
+    ("cd_player", "CD PLAYER", None),
     ("bruces_windows", "WINDOWS", BruceWindowsDemo),
 ]
+
+# cd_player's icon represents two independently-opened windows, not one
+# -- the icon should hide once its main window is open, whether or not
+# the equalizer has been revealed alongside it (see module docstring on
+# CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
+_ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
 
 CASCADE_STEP = 28
 CASCADE_BASE = (140, 100)
@@ -143,17 +166,29 @@ def _draw_icon(surface: pygame.Surface, key: str, title: str, slot: pygame.Rect)
 
 
 class _OpenWindow:
-    def __init__(self, key: str, title: str, demo: Demo, pos: tuple[int, int]) -> None:
+    def __init__(self, key: str, title: str, demo: Demo, pos: tuple[int, int], *, chrome: bool = True) -> None:
         self.key = key
         self.title = title
         self.demo = demo
         self.pos = list(pos)
+        self.chrome = chrome
         self._content_surface = pygame.Surface(demo.NATIVE_SIZE)
-        # Chrome geometry (window size, title bar/close/content rects) only
-        # depends on content size + title, both fixed once a window is
-        # open -- compute once here rather than every draw() call.
-        surf, self.local_rects = render_window_chrome(self._content_surface, title)
-        self.size = surf.get_size()
+        if chrome:
+            # Chrome geometry (window size, title bar/close/content rects)
+            # only depends on content size + title, both fixed once a
+            # window is open -- compute once here rather than every
+            # draw() call.
+            surf, self.local_rects = render_window_chrome(self._content_surface, title)
+            self.size = surf.get_size()
+        else:
+            # No generic wrapper: the demo draws its own complete chrome
+            # (own border, own close button) -- CD Player's two windows,
+            # so far the only case (2026-08-25, "should get real windows,
+            # not appear in another window"). Hit-testing for close/drag
+            # reads close_rect/button_rects straight off the demo
+            # instance instead of a chrome-supplied rect dict.
+            self.local_rects = {}
+            self.size = demo.NATIVE_SIZE
 
     def screen_rect(self) -> pygame.Rect:
         return pygame.Rect(self.pos, self.size)
@@ -167,6 +202,8 @@ class _OpenWindow:
         return pygame.Rect(self.pos[0] + r.x, self.pos[1] + r.y, r.width, r.height)
 
     def content_screen_rect(self) -> pygame.Rect:
+        if not self.chrome:
+            return self.screen_rect()
         r = self.local_rects["content"]
         return pygame.Rect(self.pos[0] + r.x, self.pos[1] + r.y, r.width, r.height)
 
@@ -176,6 +213,8 @@ class _OpenWindow:
 
     def render(self) -> pygame.Surface:
         self.demo.draw(self._content_surface)
+        if not self.chrome:
+            return self._content_surface
         surf, _ = render_window_chrome(self._content_surface, self.title)
         return surf
 
@@ -190,18 +229,48 @@ class DesktopDemo(Demo):
         self._open: dict[str, _OpenWindow] = {}
         self._order: list[str] = []  # z-order, back to front; last = focused/topmost
         self._dragging: str | None = None
+        self._mouse_down_key: str | None = None
 
     def _open_demo(self, key: str, title: str, demo_cls: type[Demo]) -> None:
         if key in self._open:
             self._focus(key)
             return
+        self._open[key] = _OpenWindow(key, title, demo_cls(text=None), self._next_cascade_pos())
+        self._order.append(key)
+
+    def _next_cascade_pos(self) -> tuple[int, int]:
         n = len(self._order)
-        pos = (
+        return (
             CASCADE_BASE[0] + (n % CASCADE_WRAP) * CASCADE_STEP,
             CASCADE_BASE[1] + (n % CASCADE_WRAP) * CASCADE_STEP,
         )
-        self._open[key] = _OpenWindow(key, title, demo_cls(text=None), pos)
-        self._order.append(key)
+
+    def _open_cd_player_main(self) -> None:
+        # CD Player's two windows are opened directly as top-level desktop
+        # windows (chrome=False -- they draw their own complete chrome),
+        # not through _open_demo's single-window path. The equalizer
+        # isn't opened here at all -- it starts hidden, matching the
+        # source (see CDPlayerMainWindow's own docstring); clicking the
+        # main window's body reveals it (_handle_click below).
+        if "cd_player_main" in self._open:
+            self._focus("cd_player_main")
+            return
+        self._open["cd_player_main"] = _OpenWindow(
+            "cd_player_main", "", CDPlayerMainWindow(text=None), self._next_cascade_pos(), chrome=False
+        )
+        self._order.append("cd_player_main")
+
+    def _reveal_cd_player_eq(self) -> None:
+        if "cd_player_eq" in self._open:
+            self._focus("cd_player_eq")
+            return
+        main_pos = self._open["cd_player_main"].pos
+        main_w = self._open["cd_player_main"].size[0]
+        pos = (main_pos[0] + main_w + 4, main_pos[1])
+        self._open["cd_player_eq"] = _OpenWindow(
+            "cd_player_eq", "", CDPlayerEqualizerWindow(text=None), pos, chrome=False
+        )
+        self._order.append("cd_player_eq")
 
     def _focus(self, key: str) -> None:
         if key in self._order:
@@ -225,6 +294,15 @@ class DesktopDemo(Demo):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._handle_click(event.pos)
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            # Chromeless windows (CD Player's own) need the release too --
+            # a transport button's press animation clears on mouse-up, not
+            # just on the next mouse-down (see CDPlayerMainWindow).
+            if self._mouse_down_key is not None:
+                win = self._open.get(self._mouse_down_key)
+                if win is not None and not win.chrome:
+                    local_pos = win.to_content_local(event.pos)
+                    win.demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=local_pos, button=1))
+            self._mouse_down_key = None
             self._dragging = None
         elif event.type == pygame.MOUSEMOTION and self._dragging is not None:
             win = self._open.get(self._dragging)
@@ -240,23 +318,52 @@ class DesktopDemo(Demo):
         key = self._window_at(pos)
         if key is not None:
             win = self._open[key]
-            if win.close_button_screen_rect().collidepoint(pos):
+            if win.chrome:
+                if win.close_button_screen_rect().collidepoint(pos):
+                    self._close(key)
+                    return
+                self._focus(key)
+                if win.title_bar_screen_rect().collidepoint(pos):
+                    self._dragging = key
+                    return
+                if win.content_screen_rect().collidepoint(pos):
+                    local_pos = win.to_content_local(pos)
+                    win.demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
+                return
+
+            # Chromeless: the demo drew its own close button and any other
+            # controls, so ask it directly (close_rect/button_rects)
+            # rather than a chrome-supplied rect dict. Any other body
+            # click both starts a drag and gets forwarded to the demo --
+            # CD Player's main window uses that to reveal the equalizer.
+            self._focus(key)
+            self._mouse_down_key = key
+            local_pos = win.to_content_local(pos)
+            win.demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
+            if getattr(win.demo, "closed", False):
                 self._close(key)
                 return
-            self._focus(key)
-            if win.title_bar_screen_rect().collidepoint(pos):
+            if key == "cd_player_main" and getattr(win.demo, "reveal_equalizer", False):
+                win.demo.reveal_equalizer = False
+                self._reveal_cd_player_eq()
+            close_rect = getattr(win.demo, "close_rect", None)
+            button_rects = getattr(win.demo, "button_rects", {})
+            hit_control = (close_rect is not None and close_rect.collidepoint(local_pos)) or any(
+                r.collidepoint(local_pos) for r in button_rects.values()
+            )
+            if not hit_control:
                 self._dragging = key
-                return
-            if win.content_screen_rect().collidepoint(pos):
-                local_pos = win.to_content_local(pos)
-                win.demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
             return
 
         for i, (demo_key, title, demo_cls) in enumerate(_DEMO_ENTRIES):
-            if demo_key in self._open:
+            open_key = _ICON_OPEN_KEY.get(demo_key, demo_key)
+            if open_key in self._open:
                 continue
             if _icon_slot_rect(i).collidepoint(pos):
-                self._open_demo(demo_key, title, demo_cls)
+                if demo_key == "cd_player":
+                    self._open_cd_player_main()
+                else:
+                    self._open_demo(demo_key, title, demo_cls)
                 return
 
     def update(self, dt: float) -> None:
@@ -266,7 +373,8 @@ class DesktopDemo(Demo):
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(DESKTOP_BG)
         for i, (key, title, _demo_cls) in enumerate(_DEMO_ENTRIES):
-            if key not in self._open:
+            open_key = _ICON_OPEN_KEY.get(key, key)
+            if open_key not in self._open:
                 _draw_icon(surface, key, title, _icon_slot_rect(i))
         for key in self._order:
             win = self._open[key]

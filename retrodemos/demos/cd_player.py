@@ -1,56 +1,65 @@
 """CD Player: simulated playback, no real audio -- a numeric LED
-track/time readout, transport buttons, a green/red dot-matrix level meter,
-and a vertical slider bank, composited from pieces reverse-engineered from
-`images/CDPLAYER.png` (see `docs/pixel-archaeology.md` for method,
-`docs/cd-player.md` for the demo overview).
+track/time readout, a dot-matrix spectrum/level meter, transport buttons,
+and a companion equalizer window with a vertical slider bank, composited
+from pieces reverse-engineered from `images/CDPLAYER.png` (see
+`docs/pixel-archaeology.md` for method, `docs/cd-player.md` for the demo
+overview).
 
 `CDPLAYER.png` (384x78) turned out not to be one coherent screenshot, the
 same surprise Title's and Dooley's source images held: it bundles three
-stacked reference bands rather than a single window. Band A (y0-28) and
-Band B (y30-53) are two differently-sized captures of the same widget
-vocabulary (transport buttons, a "cd" logo, a slider bank); Band C (y56-77)
-is a separate full-width level-meter strip. Built around Band B (confirmed
-with Bruce, 2026-08-24) since it's the larger, more detailed of the two and
-its long readout doubles as a segment-font calibration strip (see
-DIGIT_SEGMENTS below).
+stacked reference bands. Band A (y0-31, x0-284) is the main player
+window -- close button, "cd" logo, a wide readout box (spectrum dots,
+3-digit counter, repeat/shuffle status text), and 5 transport buttons.
+The companion equalizer window (x287-383, y0-53) sits beside it, own
+close button, own "cd" logo, 6-band slider bank -- taller than the main
+window since it isn't split at y31 the way the main window is. Band B
+(y32-53, x0-247) is a sprite/reference strip below the main window, not
+part of any real window -- icon and digit-shape references only, same
+role Dooley's own reference material played. Band C (y56-77) is a
+separate full-width level-meter strip, reference for the meter's colours
+and pitch, not a UI element of its own.
 
-Every piece below is pixel-verified against Band B directly (not
-approximated the way Dooley's RGB-spinner/grid area was): the digit
-segment geometry, all six button/close icons, the slider bank's
-track+tick geometry, and the "cd" logo are all literal coordinate/glyph
-data measured from the source, not guessed shapes. The one exception is
-overall panel layout (where each piece sits relative to the others) --
-Band B's own pieces aren't laid out as one coherent window (see above),
-so composing them into a single CD Player face is this file's own design
-call, not a measurement.
+A 2026-08-25 review (Bruce playtesting flagged the demo as "far from
+pixel perfect") went through two passes. The first pass fixed real box
+border and digit-font mistakes but still treated the whole top ~90px as
+one loosely-composed panel, not the two actual windows the source shows.
+The second pass (this one) rebuilt the layout around that: two window
+frames side by side, each with its own close button and "cd" logo, the
+big dot-matrix spectrum living *inside* the main readout box (not a
+separate meter panel underneath), 5 transport buttons (not 6 -- the
+extra "eject" icon only exists in Band B's reference capture, never in
+the real window), and 6 sliders (not 4).
 
-A 2026-08-25 re-verification (connected-component style, the same method
-that caught Bruce's Windows' bevel bugs) found two real mistakes in the
-first pass, both now fixed:
+Every piece is pixel-verified against Band A directly for the main and
+equalizer windows themselves (not Band B, which is reference material
+only, confirmed by finding Band A's own transport buttons use a
+different border style than Band B's copies of the same icons): the
+outer window frames are a raised bevel (white top/left, grey
+bottom/right); the readout box and the transport button sub-panel are
+sunken (reversed); individual transport buttons are a light 3-sided
+highlight (top/left/right) sitting inside that sunken well. The dot-matrix
+meter's own "dots" are a genuine 2px NW-SE diagonal glint, not a single
+pixel -- confirmed against both the spectrum area and Band C's reference
+strip, and missed by the first two passes (see _draw_meter). The digit
+segment geometry, all button/close icons, the slider bank's track+tick
+geometry, and the "cd" logo (reused identically by both windows) are all
+literal coordinate/glyph data measured from the source. The one
+genuinely invented pieces are the playback simulation itself (no real
+audio) and the slider levels (no thumb/handle is visible in the source,
+a blank calibration state).
 
-- Every widget border in the source -- the readout box, the level-meter
-  box, the transport buttons -- is a flat single-tone grey outline
-  (BEZEL_DARK), not a two-tone raised/sunken bevel. There is no bevel
-  anywhere in CDPLAYER.png outside the outer window frame; the earlier
-  `_raised_rect` helper invented one. `_flat_box` replaces it.
-- The digit segments were mis-measured: what looked like a calibration
-  strip spelling "0123456789" is actually a segment-test pattern with
-  *every* segment lit (matching Band A's own all-lit "888"), just
-  alternating red/green per position for visibility. There is no source
-  data for individual digit shapes, so the invented "6 has no top bar, 9
-  has no bottom bar" quirks were fabricated, not measured -- DIGIT_SEGMENTS
-  now uses the standard closed 6/9 forms instead. The segment *geometry*
-  (each segment's exact tapered pixel shape) came from that same all-lit
-  pattern and is real -- see _draw_digit.
-
-No PhaseSequence: unlike LED/LED II/Title, there's no scripted narrative
-here (no power-up flicker, snake, or fireworks fits "simulated CD
-playback") -- same reasoning Dooley's continuous design used. Playback is
-one continuous loop: the time counter increments, wraps to the next track
-after TRACK_LENGTH seconds (wrapping the track number after TRACK_COUNT),
-occasionally pauses for a few seconds (transport buttons pick out which
-control is "active" to match), and the level meter fakes a waveform that
-goes quiet while paused.
+The main and equalizer windows are genuinely separate in the source, not
+one panel wearing two close buttons -- confirmed by a second playtest
+pass (2026-08-25): dragging one in the original reveals/reorders the
+other, so CD Player is now interactive (the second demo to be, after
+Bruce's Windows), not automated attract-mode. Each window renders onto
+its own Surface (`_render_main_window`/`_render_eq_window`) and gets
+blited at its own draggable position; `handle_event` tracks per-window
+position and z-order the same way `desktop.py`'s `_OpenWindow` does,
+just scoped to two windows instead of an open-ended set. The demo canvas
+(480x180) is bigger than the two windows combined so there's room to
+drag them apart; they start docked together, matching the source
+screenshot's own layout.
 """
 
 from __future__ import annotations
@@ -61,16 +70,17 @@ import pygame
 
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.ticker import Ticker
+from retrodemos.framework.window_chrome import bevel_rect
 
 BG = (0, 0, 0)
 PANEL = (192, 192, 192)
 BEZEL_DARK = (128, 128, 128)
 BEZEL_LIGHT = (255, 255, 255)
 
-# Measured directly from Band A's "888" readout: (191, 0, 0). The source
-# never shows an unlit segment next to a lit one -- an "off" segment is
-# simply not drawn, same as the panel's own black background -- so there's
-# no separate off-colour to measure or invent.
+# Measured directly from Band A's readout: (191, 0, 0). The source never
+# shows an unlit segment next to a lit one -- an "off" segment is simply
+# not drawn, same as the panel's own black background -- so there's no
+# separate off-colour to measure or invent.
 SEG_ON = (191, 0, 0)
 GREEN_ON = (0, 255, 0)
 GREEN_OFF = (191, 0, 0)  # measured -- Band C's own "unlit" colour, not invented
@@ -78,8 +88,10 @@ GREEN_OFF = (191, 0, 0)  # measured -- Band C's own "unlit" colour, not invented
 # Segments: a=top, b=top-right, c=bottom-right, d=bottom, e=bottom-left,
 # f=top-left, g=middle. What looked like a calibration strip spelling
 # "0123456789" is actually a segment-test pattern with every segment lit
-# (see module docstring) -- there's no source data for individual digit
-# shapes, so this is the standard closed 6/9 form, not measured content.
+# -- there's no source data for individual digit shapes, so this is the
+# standard closed 6/9 form, not measured content. Band A's own "888"
+# counter reuses this same font at the same 12px pitch (confirmed by
+# measuring its digit cells directly), just 3 digits instead of 17.
 DIGIT_SEGMENTS = {
     "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg",
     "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg",
@@ -87,7 +99,7 @@ DIGIT_SEGMENTS = {
 }
 CELL_W, CELL_H = 11, 21
 
-# Each segment's exact pixel shape, measured from the all-lit test cell:
+# Each segment's exact pixel shape, measured from an all-lit test cell:
 # horizontal bars (a, g, d) are a 2-row trapezoid (8px then 6px, tapering
 # toward the verticals); verticals (f, b, e, c) are 1px at the row
 # touching a bar and 2px everywhere else -- the hexagonal "cut corner" cut
@@ -110,13 +122,16 @@ def _draw_digit(surface: pygame.Surface, x0: int, y0: int, ch: str, on: tuple[in
             surface.set_at((x0 + dx, y0 + dy), on)
 
 
-def _draw_readout(surface: pygame.Surface, x0: int, y0: int, text: str) -> None:
+def _draw_digits(surface: pygame.Surface, x0: int, y0: int, text: str, *, pitch: int = CELL_W) -> None:
     for i, ch in enumerate(text):
-        _draw_digit(surface, x0 + i * CELL_W, y0, ch, SEG_ON)
+        _draw_digit(surface, x0 + i * pitch, y0, ch, SEG_ON)
 
 
-# Button/close icons: pixel-verified glyphs from Band B (o=white highlight,
-# #=black fill, -=grey shadow -- the source's own beveled-icon shading).
+# Button/close icons: pixel-verified glyphs (o=white highlight, #=black
+# fill, -=grey shadow -- the source's own beveled-icon shading). "close"
+# is the X glyph both windows' own corner close buttons use, not a 6th
+# transport button -- Band A's real transport cluster only has 5 (see
+# module docstring).
 _ICON_ROWS = {
     "prev": (
         "......oo.oo.oo.",
@@ -184,31 +199,112 @@ def _draw_icon(surface: pygame.Surface, x0: int, y0: int, name: str, *, active: 
                 surface.set_at((x0 + dx, y0 + dy), colours[ch])
 
 
-# Every box in the source -- readout, meter, buttons -- is a flat 1px grey
-# outline, not a bevel; see the module docstring's 2026-08-25 note.
-def _flat_box(surface: pygame.Surface, x: int, y: int, w: int, h: int, *, fill: tuple[int, int, int] = PANEL) -> None:
-    pygame.draw.rect(surface, fill, (x, y, w, h))
-    pygame.draw.rect(surface, BEZEL_DARK, (x, y, w, h), width=1)
+# The small status cluster right of the "888" counter -- a repeat/shuffle
+# icon plus "1AR" text, and a dense (2px pitch) dot-matrix swatch below
+# it. No pixel font was built for this text; it's copied verbatim as a
+# lit/unlit mask (x209-241, y2-28 in the source), the same approach the
+# "cd" logo and button icons use for one-off glyphs.
+_STATUS_CLUSTER_ROWS = (
+    "                                 ",
+    "                                 ",
+    "                                 ",
+    "                                 ",
+    "           #      #   ##  ###    ",
+    "    #####.####   ##  #  # #  #   ",
+    "   #.......#..#   #..#..#.#..#   ",
+    "   #..#.......#   #..####.###    ",
+    "    ####.#####    #..#..#.#..#   ",
+    "      #..........###.#..#.#..#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
+    "                                 ",
+    "                                 ",
+    "                                 ",
+)
 
 
-def _draw_transport(surface: pygame.Surface, x0: int, y0: int, active: str) -> None:
-    _flat_box(surface, x0, y0, 18, 11)
-    _draw_icon(surface, x0 + 3, y0 + 2, "prev", active=active == "prev")
-    _flat_box(surface, x0 + 19, y0, 17, 11)
-    _draw_icon(surface, x0 + 21, y0 + 2, "next", active=active == "next")
-    _draw_icon(surface, x0 + 39, y0 + 2, "close")
-    _flat_box(surface, x0, y0 + 12, 12, 10)
-    _draw_icon(surface, x0 + 3, y0 + 15, "stop", active=active == "stop")
-    _flat_box(surface, x0 + 13, y0 + 12, 12, 10)
-    _draw_icon(surface, x0 + 16, y0 + 15, "pause", active=active == "pause")
-    _flat_box(surface, x0 + 26, y0 + 12, 12, 10)
-    _draw_icon(surface, x0 + 28, y0 + 15, "play", active=active == "play")
+def _draw_status_cluster(surface: pygame.Surface, x0: int, y0: int) -> None:
+    for dy, row in enumerate(_STATUS_CLUSTER_ROWS):
+        for dx, ch in enumerate(row):
+            if ch == "#":
+                surface.set_at((x0 + dx, y0 + dy), SEG_ON)
 
 
-# Slider bank: 2px track (dark+light), 2px ticks every 6px, 12px pitch --
-# all measured from Band B. No thumb/handle is visible in the source
-# (a blank calibration state), so SLIDER_LEVELS below (one per slider,
-# 0..1) is this file's own invented content, not measured.
+def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fill: tuple[int, int, int] = PANEL) -> None:
+    """A sunken bevel (grey top/left, white bottom/right), mitered the
+    same way `framework.window_chrome.bevel_rect` is. That helper always
+    fills PANEL first, which doesn't fit the readout box's black
+    interior, so this is its own small sibling rather than a reuse."""
+    x, y, w, h = rect
+    pygame.draw.rect(surface, fill, rect)
+    pygame.draw.line(surface, BEZEL_DARK, (x, y), (x + w - 2, y))
+    pygame.draw.line(surface, BEZEL_DARK, (x, y), (x, y + h - 2))
+    pygame.draw.line(surface, BEZEL_LIGHT, (x + w - 1, y + 1), (x + w - 1, y + h - 1))
+    pygame.draw.line(surface, BEZEL_LIGHT, (x + 1, y + h - 1), (x + w - 1, y + h - 1))
+
+
+# Transport sub-panel: measured directly from Band A (x247-283, y3-28),
+# not Band B -- Band A's own buttons turned out to use a different border
+# style than Band B's copies of the same icons (light 3-sided highlight
+# here vs. Band B's flat grey), so Band B was reference for icon shapes
+# only, never for chrome. 5 buttons: prev/next on top, stop/pause/play
+# below -- there is no 6th "eject" button in the real window.
+_TRANSPORT_RECT = (247, 3, 37, 25)
+# icon_offset re-measured 2026-08-25 (Bruce flagged the icons as visibly
+# off against the source): prev/next were offset (4,6)/(2,6), 4 rows too
+# far down, clipping most of the glyph against the button's own bottom
+# edge -- the true offset for every icon is its own tight bounding box
+# within its button rect, measured directly rather than eyeballed.
+_TRANSPORT_BUTTONS = (
+    ("prev", (248, 4, 17, 10), (3, 2)),
+    ("next", (266, 4, 17, 10), (3, 2)),
+    ("stop", (248, 15, 11, 12), (3, 3)),
+    ("pause", (260, 15, 11, 12), (3, 3)),
+    ("play", (272, 15, 11, 12), (3, 2)),
+)
+
+
+def _button_highlight(surface: pygame.Surface, rect: tuple[int, int, int, int], *, pressed: bool = False) -> None:
+    """Each transport button is a light highlight on 3 sides (top, left,
+    right) sitting inside the sunken sub-panel -- there's no dark 4th
+    side of its own, the sub-panel's own sunken shadow reads as that.
+    `pressed` inverts the highlight to dark, an invented press animation
+    (no source data exists for a pressed state -- see module docstring)."""
+    x, y, w, h = rect
+    colour = BEZEL_DARK if pressed else BEZEL_LIGHT
+    pygame.draw.line(surface, colour, (x, y), (x + w - 1, y))
+    pygame.draw.line(surface, colour, (x, y), (x, y + h - 1))
+    pygame.draw.line(surface, colour, (x + w - 1, y), (x + w - 1, y + h - 1))
+
+
+def _draw_transport(surface: pygame.Surface, active: str, *, pressed: str | None = None) -> None:
+    _sunken_box(surface, _TRANSPORT_RECT)
+    for name, rect, icon_offset in _TRANSPORT_BUTTONS:
+        is_pressed = name == pressed
+        _button_highlight(surface, rect, pressed=is_pressed)
+        # pressed buttons nudge their icon 1px down/right, reading as
+        # physically pushed in -- same invented-animation reasoning as
+        # the highlight inversion above.
+        nudge = 1 if is_pressed else 0
+        _draw_icon(surface, rect[0] + icon_offset[0] + nudge, rect[1] + icon_offset[1] + nudge, name, active=active == name)
+
+
+# Slider bank: 2px track (dark+light), 2px ticks every 6px, 12px pitch,
+# 6 sliders -- all measured from the equalizer window directly. No
+# thumb/handle is visible in the source (a blank calibration state), so
+# the demo's slider levels and thumb positions are invented content.
 def _draw_sliders(surface: pygame.Surface, x0: int, y0: int, count: int, height: int, levels: list[float]) -> None:
     for i in range(count):
         sx = x0 + i * 12
@@ -224,8 +320,8 @@ def _draw_sliders(surface: pygame.Surface, x0: int, y0: int, count: int, height:
         pygame.draw.rect(surface, BEZEL_DARK, (sx - 3, thumb_y, 9, 3))
 
 
-# "cd" logo, pixel-verified from Band B (re-measured 2026-08-25 -- the
-# first pass was off by a column and missing the "d"'s ascender tip).
+# "cd" logo, pixel-verified -- both windows show the literal same glyph
+# (re-measured 2026-08-25 against both instances to confirm).
 _CD_ROWS = (
     "..........-#o",
     "..........-#o",
@@ -246,30 +342,87 @@ def _draw_cd_logo(surface: pygame.Surface, x0: int, y0: int) -> None:
                 surface.set_at((x0 + dx, y0 + dy), _ICON_COLOUR[ch])
 
 
+# Each "dot" in the meter isn't a single pixel -- it's a 2px NW-SE
+# diagonal glint, confirmed both here and in Band C's own reference strip
+# (row y: one pixel; row y+1: the next pixel over). Missed in the first
+# two passes, which drew a single set_at() per dot.
 def _draw_meter(surface: pygame.Surface, x0: int, y0: int, cols: int, rows: int, levels: list[float]) -> None:
     for col in range(cols):
         lit_rows = round(levels[col % len(levels)] * rows)
         for row in range(rows):
             lit = row >= rows - lit_rows
-            surface.set_at((x0 + col * 3, y0 + row * 3), GREEN_ON if lit else GREEN_OFF)
+            colour = GREEN_ON if lit else GREEN_OFF
+            dx, dy = x0 + col * 3, y0 + row * 3
+            surface.set_at((dx, dy), colour)
+            surface.set_at((dx + 1, dy + 1), colour)
 
 
-WIDTH, HEIGHT = 340, 90
+# Window frames -- measured from Band A/the equalizer window directly:
+# both are a raised bevel (white top/left, grey bottom/right), no black
+# ring around them the way Bruce's Windows has. reuses
+# framework.window_chrome.bevel_rect, settling PLAN.md's open question
+# of whether CD Player should route its chrome through that module --
+# its own inner controls (readout, buttons) still don't, since those are
+# a different border style (sunken, or the 3-sided highlight above).
+# Both rects are window-local (each window renders onto its own Surface,
+# sized to its rect, at (0,0)) -- see _render_main_window/_render_eq_window.
+# The two are truly separate windows in the source, not one panel: each
+# has its own close button, can be dragged independently, and clicking
+# either brings it in front of the other (2026-08-25, playtesting).
+MAIN_WINDOW_RECT = (0, 0, 285, 32)
+EQ_WINDOW_RECT = (0, 0, 97, 54)
+READOUT_RECT = (19, 3, 223, 26)
+METER_ORIGIN = (21, 6)
+DIGITS_ORIGIN = (174, 5)
+STATUS_ORIGIN = (209, 2)
+CLOSE_ICON_OFFSET = (2, 2)
+CD_LOGO_OFFSET = (3, 18)
+EQ_CLOSE_OFFSET = (2, 1)
+EQ_DIVIDER_Y = 12
+EQ_CD_LOGO_POS = (7, 44)
+EQ_SLIDER_ORIGIN = (26, 18)
+EQ_SLIDER_HEIGHT = 36
+EQ_SLIDER_COUNT = 6
+
+# The demo canvas is bigger than the two windows themselves so there's
+# room to drag them apart -- they start docked together, matching the
+# source screenshot's own layout.
+WIDTH, HEIGHT = 480, 180
+DESK_BG = (72, 76, 78)  # invented -- a neutral backdrop for the floating windows
+MAIN_START_POS = (40, 24)
+EQ_START_POS = (40 + MAIN_WINDOW_RECT[2] + 2, 24)
 
 # Playback simulation constants -- all invented content, not measured.
 TRACK_LENGTH = 180.0  # seconds per fake track
 TRACK_COUNT = 12
 PAUSE_EVERY = 25.0  # seconds of play between pauses
 PAUSE_DURATION = 3.0
-METER_COLS = 84
-METER_ROWS = 12
+METER_COLS = 50  # (168 - 21) // 3 + 1, matching the measured spectrum area
+METER_ROWS = 7
 METER_TICK = 0.06
+SLIDER_LEVELS = [0.6, 0.4, 0.7, 0.5, 0.55, 0.45]  # invented -- no thumb visible in the source
 
 
-class CDPlayerDemo(Demo):
-    NATIVE_SIZE = (WIDTH, HEIGHT)
+class CDPlayerMainWindow(Demo):
+    """The main player window, standalone: readout, transport, its own
+    close button and "cd" logo. Draws its own complete chrome (see
+    module docstring), so a host -- the desktop shell, or `CDPlayerDemo`
+    below for standalone launches -- reads `close_rect`/`button_rects`
+    directly off this instance to know where its controls are, rather
+    than this window being wrapped in someone else's generic chrome.
+
+    `reveal_equalizer` is a flag, not a callback: it's set True by a
+    body click (not on a button or the close control) and left for
+    whoever owns this window to notice and clear next frame -- avoids
+    this window needing to know anything about how its host manages a
+    second window. `closed` works the same way for the close button.
+    """
+
+    NATIVE_SIZE = MAIN_WINDOW_RECT[2:]
 
     def __init__(self, *, text: str | None = None, **_ignored) -> None:
+        self.close_rect = pygame.Rect(0, 0, 14, 13)
+        self.button_rects = {name: pygame.Rect(*rect) for name, rect, _offset in _TRANSPORT_BUTTONS}
         self.reset()
 
     def reset(self) -> None:
@@ -281,6 +434,22 @@ class CDPlayerDemo(Demo):
         self._meter_ticker = Ticker(METER_TICK)
         self._meter_phase = 0.0
         self._levels = [0.0] * METER_COLS
+        self._pressed: str | None = None
+        self.reveal_equalizer = False
+        self.closed = False
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.close_rect.collidepoint(event.pos):
+                self.closed = True
+                return
+            for name, rect in self.button_rects.items():
+                if rect.collidepoint(event.pos):
+                    self._pressed = name
+                    return
+            self.reveal_equalizer = True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._pressed = None
 
     def update(self, dt: float) -> None:
         if self._paused:
@@ -317,21 +486,157 @@ class CDPlayerDemo(Demo):
         return "pause" if self._paused else "play"
 
     def draw(self, surface: pygame.Surface) -> None:
-        surface.fill(PANEL)
+        bevel_rect(surface, (0, 0, *self.NATIVE_SIZE), raised=True)
+        cx, cy = CLOSE_ICON_OFFSET
+        _draw_icon(surface, cx, cy, "close")
+        lx, ly = CD_LOGO_OFFSET
+        _draw_cd_logo(surface, lx, ly)
 
-        _flat_box(surface, 6, 6, 150, 25, fill=BG)
+        _sunken_box(surface, READOUT_RECT, fill=BG)
+        mx, my = METER_ORIGIN
+        _draw_meter(surface, mx, my, METER_COLS, METER_ROWS, self._levels)
         minutes, seconds = divmod(int(self._elapsed), 60)
-        readout = f"{self._track:2d}  {minutes:1d} {seconds:02d}"
-        _draw_readout(surface, 12, 10, readout)
+        readout = f"{min(minutes, 9)}{seconds:02d}"
+        dx, dy = DIGITS_ORIGIN
+        _draw_digits(surface, dx, dy, readout, pitch=12)
+        sx, sy = STATUS_ORIGIN
+        _draw_status_cluster(surface, sx, sy)
 
-        _draw_transport(surface, 165, 8, self._active_button())
+        _draw_transport(surface, self._active_button(), pressed=self._pressed)
 
-        _flat_box(surface, 6, 40, 258, 44, fill=BG)
-        _draw_meter(surface, 10, 44, METER_COLS, METER_ROWS, self._levels)
 
-        _flat_box(surface, 270, 40, 64, 44)
-        _draw_cd_logo(surface, 273, 42)
-        _draw_sliders(surface, 273, 60, 4, 18, [0.6, 0.4, 0.7, 0.5])
+class CDPlayerEqualizerWindow(Demo):
+    """The companion equalizer window, standalone: its own close button,
+    "cd" logo, and the 6-slider bank. No functional sliders yet (no
+    thumb/handle exists in the source to know how one should look while
+    being dragged, see module docstring) -- just the close control."""
+
+    NATIVE_SIZE = EQ_WINDOW_RECT[2:]
+
+    def __init__(self, *, text: str | None = None, **_ignored) -> None:
+        cx, cy = EQ_CLOSE_OFFSET
+        self.close_rect = pygame.Rect(cx - 2, cy - 1, 14, 13)
+        self.reset()
+
+    def reset(self) -> None:
+        self.closed = False
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.close_rect.collidepoint(event.pos):
+            self.closed = True
+
+    def draw(self, surface: pygame.Surface) -> None:
+        ew, eh = self.NATIVE_SIZE
+        bevel_rect(surface, (0, 0, ew, eh), raised=True)
+        ecx, ecy = EQ_CLOSE_OFFSET
+        _draw_icon(surface, ecx, ecy, "close")
+        pygame.draw.line(surface, BEZEL_DARK, (1, EQ_DIVIDER_Y), (ew - 2, EQ_DIVIDER_Y))
+        pygame.draw.line(surface, BEZEL_LIGHT, (1, EQ_DIVIDER_Y + 1), (ew - 2, EQ_DIVIDER_Y + 1))
+        _draw_cd_logo(surface, *EQ_CD_LOGO_POS)
+        sx0, sy0 = EQ_SLIDER_ORIGIN
+        _draw_sliders(surface, sx0, sy0, EQ_SLIDER_COUNT, EQ_SLIDER_HEIGHT, SLIDER_LEVELS)
+
+
+class CDPlayerDemo(Demo):
+    """Standalone combo view -- both windows on one canvas, for
+    `python -m retrodemos cd_player` (a single Demo, no desktop shell
+    around it to host two independent windows). The desktop shell itself
+    does *not* use this class: it opens `CDPlayerMainWindow` and
+    `CDPlayerEqualizerWindow` directly as two independent top-level
+    windows instead (see `desktop.py`'s own CD Player handling) --
+    nesting them inside a third wrapper window looked wrong once seen on
+    the real desktop (2026-08-25 playtesting: "should get real windows,
+    not appear in another window"). This class re-implements that same
+    per-window position/z-order/reveal/close bookkeeping at a smaller
+    scale so the standalone view keeps working the same way.
+
+    The equalizer starts hidden, same as on the desktop -- clicking the
+    main window's body (not a button, not its close control) reveals it.
+    """
+
+    NATIVE_SIZE = (WIDTH, HEIGHT)
+
+    def __init__(self, *, text: str | None = None, **_ignored) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.main = CDPlayerMainWindow()
+        self.eq = CDPlayerEqualizerWindow()
+        self._win_pos = {"main": list(MAIN_START_POS), "eq": list(EQ_START_POS)}
+        self._order: list[str] = ["main"]  # equalizer hidden until revealed
+        self._dragging: str | None = None
+        self._drag_offset = (0, 0)
+        self._mouse_down_key: str | None = None
+
+    def _demo(self, key: str) -> Demo:
+        return self.main if key == "main" else self.eq
+
+    def _window_rect(self, key: str) -> pygame.Rect:
+        return pygame.Rect(self._win_pos[key], self._demo(key).NATIVE_SIZE)
+
+    def _window_at(self, pos: tuple[int, int]) -> str | None:
+        for key in reversed(self._order):
+            if self._window_rect(key).collidepoint(pos):
+                return key
+        return None
+
+    def _focus(self, key: str) -> None:
+        self._order.remove(key)
+        self._order.append(key)
+
+    def _reveal_equalizer(self) -> None:
+        if "eq" not in self._order:
+            self._order.append("eq")
+        else:
+            self._focus("eq")
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            key = self._window_at(event.pos)
+            if key is None:
+                return
+            self._focus(key)
+            self._mouse_down_key = key
+            demo = self._demo(key)
+            wx, wy = self._win_pos[key]
+            local_pos = (event.pos[0] - wx, event.pos[1] - wy)
+            demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=local_pos, button=1))
+            if demo.closed:
+                demo.closed = False
+                self._order.remove(key)
+                return
+            if key == "main" and self.main.reveal_equalizer:
+                self.main.reveal_equalizer = False
+                self._reveal_equalizer()
+            hit_control = demo.close_rect.collidepoint(local_pos) or any(
+                r.collidepoint(local_pos) for r in getattr(demo, "button_rects", {}).values()
+            )
+            if not hit_control:
+                self._dragging = key
+                self._drag_offset = (event.pos[0] - wx, event.pos[1] - wy)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._mouse_down_key is not None and self._mouse_down_key in self._order:
+                demo = self._demo(self._mouse_down_key)
+                wx, wy = self._win_pos[self._mouse_down_key]
+                local_pos = (event.pos[0] - wx, event.pos[1] - wy)
+                demo.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=local_pos, button=1))
+            self._dragging = None
+            self._mouse_down_key = None
+        elif event.type == pygame.MOUSEMOTION and self._dragging is not None:
+            ox, oy = self._drag_offset
+            self._win_pos[self._dragging] = [event.pos[0] - ox, event.pos[1] - oy]
+
+    def update(self, dt: float) -> None:
+        for key in self._order:
+            self._demo(key).update(dt)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.fill(DESK_BG)
+        for key in self._order:  # back to front, so the focused window ends up on top
+            demo = self._demo(key)
+            content = pygame.Surface(demo.NATIVE_SIZE)
+            demo.draw(content)
+            surface.blit(content, self._win_pos[key])
 
 
 DEMO_CLASS = CDPlayerDemo

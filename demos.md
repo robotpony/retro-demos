@@ -12,7 +12,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 |---|---|---|---|---|
 | Bruce's 21 | `CARDS.png`, `BACKS.png` | Automated | [docs/bruces-21.md](docs/bruces-21.md) | Not started |
 | Cinqtris | `CT_ANI.png`, `CT_PRTS.png` | Automated + one button (About popup) | [docs/cinqtris.md](docs/cinqtris.md) | Not started |
-| CD Player | `CDPLAYER.png` | Automated, simulated audio | [docs/cd-player.md](docs/cd-player.md) | Built (`retrodemos/demos/cd_player.py`) |
+| CD Player | `CDPLAYER.png` | Interactive (drag/focus two windows), simulated audio | [docs/cd-player.md](docs/cd-player.md) | Built (`retrodemos/demos/cd_player.py`) |
 | LED | `LED-thumb.png` | Automated | [docs/led.md](docs/led.md) | Built (`retrodemos/demos/led.py`) |
 | LED II | `LED-II-thumb.png` | Automated | [docs/led-ii.md](docs/led-ii.md) | Built (`retrodemos/demos/led_ii.py`) |
 | Title | `TITLE.png` | Automated | [docs/title.md](docs/title.md) | Built (`retrodemos/demos/title.py`) |
@@ -28,7 +28,7 @@ The shared framework itself (`retrodemos/framework/`: canvas, keys, `Demo` base,
 
 ## Project-wide decisions
 
-- All demos are automated attract-mode, except **Bruce's Windows**, which is functionally interactive. Its chrome is not shared with other demos; see `PLAN.md`.
+- All demos are automated attract-mode, except **Bruce's Windows** and **CD Player**, which are functionally interactive (CD Player's own main and equalizer windows can each be dragged and clicked to front, added 2026-08-25 once playtesting showed they're genuinely separate windows in the source, not one panel). Neither's chrome is shared with other demos; see `PLAN.md`.
 - **Cinqtris** is the one automated demo with a single interactive control: its "MADMAX" cell is a button that opens an About popup.
 - README priority 2 (shared CLI and keybindings) is designed in `PLAN.md`: a single launcher (`python -m retrodemos <name>`) owns argument parsing, and Esc/Q, Space, and R are handled once for every demo.
 - The LED framework's scope (shared by LED, LED II, and Title) is settled in `PLAN.md`: it owns both the grid renderer and the common scroll/cycle content helpers.

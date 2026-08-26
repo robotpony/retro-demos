@@ -44,7 +44,7 @@ Every demo shares these keybindings:
 | Space | Pause / resume |
 | R | Restart |
 
-The desktop shell (`python -m retrodemos` with no name) adds its own controls: click an icon to open that demo as a window, drag its title bar to move it, click the close button to shut it, click a window to bring it to front. Two demos add their own controls when run standalone: Bruce's Windows ("Got it" closes its dialog) and Cinqtris (the "MADMAX" cell is a button that opens an About popup). See each demo's spec in `docs/` for details.
+The desktop shell (`python -m retrodemos` with no name) adds its own controls: click an icon to open that demo as a window, drag its title bar to move it, click the close button to shut it, click a window to bring it to front. Some demos add their own controls when run standalone: Bruce's Windows ("Got it" closes its dialog), CD Player (its main and equalizer windows are each draggable, and clicking either brings it to front), and Cinqtris (the "MADMAX" cell is a button that opens an About popup). See each demo's spec in `docs/` for details.
 
 ## Project docs
 
