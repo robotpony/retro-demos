@@ -20,6 +20,7 @@ from retrodemos.demos.cd_player import (
     TRACK_LENGTH,
     CDPlayerDemo,
     _draw_digit,
+    _draw_transport,
 )
 
 
@@ -143,6 +144,26 @@ def test_active_button_reflects_play_pause_state():
     assert demo.main._active_button() == "play"
     demo.main._paused = True
     assert demo.main._active_button() == "pause"
+
+
+def test_transport_panel_is_byte_exact_against_the_source_image():
+    # Playtesting (2026-08-26): button positions, colours, and borders
+    # were all still off. Re-measured from scratch and verified here the
+    # same way tank_status_window's own chrome is -- against the actual
+    # source pixels, not by eye. Covers x=247..284, y=3..27 of Band A
+    # (images/CDPLAYER.png), the sunken sub-panel plus all 5 buttons with
+    # no button active/pressed, matching the source's own static state.
+    src = pygame.image.load("images/CDPLAYER.png")
+    mine = pygame.Surface((288, 32))
+    mine.fill((192, 192, 192))
+    _draw_transport(mine, active="", pressed=None)
+    mismatches = [
+        (x, y)
+        for y in range(3, 28)
+        for x in range(247, 285)
+        if mine.get_at((x, y))[:3] != src.get_at((x, y))[:3]
+    ]
+    assert mismatches == []
 
 
 def test_windows_start_docked_with_the_equalizer_hidden():

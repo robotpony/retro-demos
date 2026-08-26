@@ -152,48 +152,58 @@ def _draw_digits(surface: pygame.Surface, x0: int, y0: int, text: str, *, pitch:
 # transport button -- Band A's real transport cluster only has 5 (see
 # module docstring).
 _ICON_ROWS = {
+    # Re-extracted 2026-08-26 as each icon's own tight bounding box within
+    # its button (playtesting: stop/pause were both missing their bottom
+    # shadow row entirely -- the icon reads as one row shorter than the
+    # source's -- and play's taper was truncated 2 rows early). Masks are
+    # tight now (no padding baked in); _TRANSPORT_BUTTONS' own icon_offset
+    # is each one's measured (bbox_x - button_x, bbox_y - button_y).
     "prev": (
-        "......oo.oo.oo.",
-        ".....o##-o#-o#-",
-        "....o###-o#-o#-",
-        "...o####-o#-o#-",
-        "....-###-o#-o#-",
-        ".....-##-o#-o#-",
-        "......---.--.--",
+        "...oo.oo.oo.",
+        "..o##-o#-o#-",
+        ".o###-o#-o#-",
+        "o####-o#-o#-",
+        ".-###-o#-o#-",
+        "..-##-o#-o#-",
+        "...---.--.--",
     ),
     "next": (
-        "..oo.oo..oo....",
-        "..o#-o#-o##o...",
-        "..o#-o#-o###o..",
-        "..o#-o#-o####o.",
-        "..o#-o#-o###-..",
-        "..o#-o#-o##-...",
-        "...--.--.--....",
+        "oo.oo..oo...",
+        "o#-o#-o##o..",
+        "o#-o#-o###o.",
+        "o#-o#-o####o",
+        "o#-o#-o###-.",
+        "o#-o#-o##-..",
+        ".--.--.--...",
     ),
     "stop": (
-        "...ooooo...",
-        "...o####-..",
-        "...o####-..",
-        "...o####-..",
-        "...o####-..",
-        "...o####-..",
+        "ooooo.",
+        "o####-",
+        "o####-",
+        "o####-",
+        "o####-",
+        "o####-",
+        ".-----",
     ),
     "pause": (
-        "..oo.oo...",
-        "..o#-o#-..",
-        "..o#-o#-..",
-        "..o#-o#-..",
-        "..o#-o#-..",
-        "..o#-o#-..",
+        "oo.oo.",
+        "o#-o#-",
+        "o#-o#-",
+        "o#-o#-",
+        "o#-o#-",
+        "o#-o#-",
+        ".--.--",
     ),
     "play": (
-        "..o........",
-        ".o#o.......",
-        ".o##o......",
-        ".o###o.....",
-        ".o####o....",
-        ".o###-.....",
-        ".o##-......",
+        ".o....",
+        "o#o...",
+        "o##o..",
+        "o###o.",
+        "o####o",
+        "o###-.",
+        "o##-..",
+        "o#-...",
+        ".-....",
     ),
     "close": (
         "...o...o.....",
@@ -289,7 +299,7 @@ def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fil
 # here vs. Band B's flat grey), so Band B was reference for icon shapes
 # only, never for chrome. 5 buttons: prev/next on top, stop/pause/play
 # below -- there is no 6th "eject" button in the real window.
-_TRANSPORT_RECT = (247, 3, 37, 25)
+_TRANSPORT_RECT = (247, 3, 38, 25)
 # icon_offset re-measured again 2026-08-26 (playtesting: still visibly
 # off-centre against the source, bleeding past the button edges) -- the
 # 2026-08-25 pass fixed the vertical clipping but never actually solved
@@ -298,29 +308,61 @@ _TRANSPORT_RECT = (247, 3, 37, 25)
 # comparing each button's measured black bbox in images/CDPLAYER.png
 # against the same bbox within `_ICON_ROWS`' own mask, not eyeballed.
 _TRANSPORT_BUTTONS = (
-    ("prev", (248, 4, 17, 10), (0, 2)),
-    ("next", (266, 4, 17, 10), (1, 2)),
-    ("stop", (248, 15, 11, 12), (0, 3)),
-    ("pause", (260, 15, 11, 12), (1, 3)),
-    ("play", (272, 15, 11, 12), (2, 2)),
+    ("prev", (248, 4, 17, 10), (3, 2)),
+    ("next", (266, 4, 17, 10), (3, 2)),
+    ("stop", (248, 15, 11, 12), (3, 3)),
+    ("pause", (260, 15, 11, 12), (3, 3)),
+    ("play", (272, 15, 11, 12), (3, 2)),
 )
 
 
 def _button_highlight(surface: pygame.Surface, rect: tuple[int, int, int, int], *, pressed: bool = False) -> None:
-    """Each transport button is a light highlight on 3 sides (top, left,
-    right) sitting inside the sunken sub-panel -- there's no dark 4th
-    side of its own, the sub-panel's own sunken shadow reads as that.
-    `pressed` inverts the highlight to dark, an invented press animation
-    (no source data exists for a pressed state -- see module docstring)."""
+    """Each transport button is a highlight on 2 sides only -- top and
+    left, full length on each -- re-measured 2026-08-26 (playtesting:
+    still visibly off) after two false leads: it does NOT have its own
+    right or bottom edge line at all (a clean column/row scan away from
+    any icon glyph -- which has its own 'o'/'-' shading that a scan
+    closer to one had been misread as chrome -- shows plain panel colour
+    the entire face, no shadow). The separating lines between buttons
+    (see `_TRANSPORT_DIVIDERS`) are a shared structure, not owned by
+    either neighbour. `pressed` swaps highlight for shadow, an invented
+    press animation (no source data exists for a pressed state)."""
     x, y, w, h = rect
     colour = BEZEL_DARK if pressed else BEZEL_LIGHT
     pygame.draw.line(surface, colour, (x, y), (x + w - 1, y))
     pygame.draw.line(surface, colour, (x, y), (x, y + h - 1))
-    pygame.draw.line(surface, colour, (x + w - 1, y), (x + w - 1, y + h - 1))
+
+
+# Dividers between adjacent buttons, and between the last button in each
+# row and the panel's own right edge -- measured the same session as the
+# button rects: each spans from just below its row's own top-highlight
+# row through the shared horizontal divider row that closes that row out
+# (y=14 for the prev/next row, y=27 for stop/pause/play's).
+_TRANSPORT_DIVIDERS = (
+    (265, 5, 14), (283, 5, 14),  # prev|next, next|panel-edge
+    (259, 16, 27), (271, 16, 27), (283, 16, 27),  # stop|pause, pause|play, play|panel-edge
+)
+# Each row-divider line, plus the x-positions it must leave alone --
+# mitered the same "leave the T-junction unset" way `black_ring` leaves
+# its own corners (see tank_status_window_grid.py for the same idea):
+# wherever a button's own left-highlight column crosses this row, the
+# highlight wins and the divider colour doesn't show. y=27's line also
+# reaches one column further left than y=14's, into the panel's own left
+# edge -- _sunken_box's own left edge stops one row short of it.
+_TRANSPORT_ROW_DIVIDERS = (
+    (14, 248, 283, (248, 266)),
+    (27, 247, 283, (248, 260, 272)),
+)
 
 
 def _draw_transport(surface: pygame.Surface, active: str, *, pressed: str | None = None) -> None:
     _sunken_box(surface, _TRANSPORT_RECT)
+    for y, x0, x1, skip_x in _TRANSPORT_ROW_DIVIDERS:
+        pygame.draw.line(surface, BEZEL_DARK, (x0, y), (x1, y))
+        for x in skip_x:
+            surface.set_at((x, y), PANEL)
+    for x, y0, y1 in _TRANSPORT_DIVIDERS:
+        pygame.draw.line(surface, BEZEL_DARK, (x, y0), (x, y1))
     for name, rect, icon_offset in _TRANSPORT_BUTTONS:
         is_pressed = name == pressed
         _button_highlight(surface, rect, pressed=is_pressed)
@@ -402,7 +444,7 @@ def _draw_title_marquee(surface: pygame.Surface, x0: int, y0: int, cols: int, ce
 # The two are truly separate windows in the source, not one panel: each
 # has its own close button, can be dragged independently, and clicking
 # either brings it in front of the other (2026-08-25, playtesting).
-MAIN_WINDOW_RECT = (0, 0, 285, 32)
+MAIN_WINDOW_RECT = (0, 0, 288, 32)
 EQ_WINDOW_RECT = (0, 0, 97, 54)
 READOUT_RECT = (19, 3, 223, 26)
 TITLE_ORIGIN = (21, 6)
