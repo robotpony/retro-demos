@@ -119,6 +119,17 @@ def render_window_chrome(content: pygame.Surface, title: str) -> tuple[pygame.Su
     border_rect = (1, 1, width - 2, height - 2)
     bevel_rect(surf, border_rect)
     black_ring(surf, outline_rect)
+    # black_ring leaves its own 4 corners unset by design (mitered, matching
+    # WINDOW1.png's own Dialog exactly -- see bruces_windows.py), but at
+    # this wrapper's much larger, arbitrary sizes that reads as 4 stray
+    # grey pixels rather than a deliberate miter (playtesting, 2026-08-26).
+    # Closing them here is local to the generic wrapper; bruces_windows.py's
+    # own byte-exact reconstruction of the real Dialog keeps the source's
+    # actual mitered corners.
+    surf.set_at((0, 0), BLACK)
+    surf.set_at((width - 1, 0), BLACK)
+    surf.set_at((0, height - 1), BLACK)
+    surf.set_at((width - 1, height - 1), BLACK)
 
     title_bevel_rect = (BORDER, BORDER, width - 2 * BORDER, title_bar_bevel_h)
     bevel_rect(surf, title_bevel_rect, raised=False)

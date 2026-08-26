@@ -43,12 +43,26 @@ class Snake(Generic[Node]):
     time: each step moves the head to a random neighbour (never immediately
     back the way it came, unless that's the only option), growing until
     `max_length` is reached and then holding that length, oldest node
-    dropped as a new one is added."""
+    dropped as a new one is added.
 
-    def __init__(self, graph: dict[Node, set[Node]], start: Node, max_length: int, rng: random.Random) -> None:
+    `weight_fn(current, candidate)` optionally weights the random choice
+    instead of picking uniformly -- e.g. LED's SnakePhase (2026-08-26,
+    playtesting: "moving horizontally more") weights a candidate higher
+    when it's in a different digit cell than the head, so the crawl
+    drifts across the display rather than looping within one digit."""
+
+    def __init__(
+        self,
+        graph: dict[Node, set[Node]],
+        start: Node,
+        max_length: int,
+        rng: random.Random,
+        weight_fn: Callable[[Node, Node], float] | None = None,
+    ) -> None:
         self.graph = graph
         self.max_length = max_length
         self.rng = rng
+        self.weight_fn = weight_fn
         self.body: list[Node] = [start]
 
     def advance(self) -> None:
@@ -56,7 +70,12 @@ class Snake(Generic[Node]):
         neighbours = list(self.graph[head])
         previous = self.body[1] if len(self.body) > 1 else None
         candidates = [n for n in neighbours if n != previous] or neighbours
-        self.body.insert(0, self.rng.choice(candidates))
+        if self.weight_fn is None:
+            choice = self.rng.choice(candidates)
+        else:
+            weights = [self.weight_fn(head, c) for c in candidates]
+            choice = self.rng.choices(candidates, weights=weights, k=1)[0]
+        self.body.insert(0, choice)
         if len(self.body) > self.max_length:
             self.body.pop()
 

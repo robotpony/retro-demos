@@ -84,6 +84,10 @@ SEGMENTS: dict[str, set[tuple[int, int]]] = {
 }
 DOT_PIXELS = {(13, 20), (13, 21), (14, 20), (14, 21)}
 ALL_SEGMENT_PIXELS: set[tuple[int, int]] = set().union(*SEGMENTS.values())
+# Reverse of SEGMENTS -- safe since segments never overlap (see
+# test_segments_dont_overlap) -- used by render_raw's per-segment
+# intensity mode to look up which segment a pixel belongs to.
+_PIXEL_TO_SEGMENT: dict[tuple[int, int], str] = {p: name for name, pixels in SEGMENTS.items() for p in pixels}
 
 DIGIT_SEGMENTS = {
     "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",
@@ -159,21 +163,37 @@ class SevenSegmentDisplay:
     def render_raw(
         self,
         surface: pygame.Surface,
-        lit_segments: dict[int, set[str]] | None = None,
+        lit_segments: dict[int, set[str]] | dict[tuple[int, str], float] | None = None,
         lit_dots: set[int] | None = None,
     ) -> None:
-        """Draw directly from a per-digit set of lit segment names (e.g.
-        {2: {"a", "g"}} lights just those two segments on digit index 2),
-        for choreography that isn't a fixed character -- the power-up,
-        snake, and explosion phases all draw this way. Digits/dots not
-        mentioned render fully unlit (dim ghost)."""
-        lit_segments = lit_segments or {}
+        """Draw directly from lit segments, for choreography that isn't a
+        fixed character -- the power-up, snake, and explosion phases all
+        draw this way. Two forms: a per-digit set of segment names (e.g.
+        {2: {"a", "g"}} fully lights just those two segments on digit
+        index 2 -- most callers), or a dict keyed by (digit_index,
+        segment_name) -- the `Node` shape `graph_walk.Burst` walks over
+        `segment_adjacency` -- mapping to a 0..1 intensity, blended
+        between UNLIT and LIT via `lerp_color` for effects that fade
+        rather than just switch on/off (ExplosionPhase's fireworks).
+        Segments/digits not mentioned render fully unlit (dim ghost)."""
         lit_dots = lit_dots or set()
+        intensity = self._segment_intensity(lit_segments)
         surface.fill(BG)
         self._draw_bezel(surface)
         for i in range(self.digit_count):
             origin_x = self.border + self.margin + i * CELL_W
-            self._draw_digit(surface, origin_x, lit_segments.get(i, set()), i in lit_dots)
+            self._draw_digit(surface, origin_x, i, intensity, i in lit_dots)
+
+    @staticmethod
+    def _segment_intensity(
+        lit_segments: dict[int, set[str]] | dict[tuple[int, str], float] | None,
+    ) -> dict[tuple[int, str], float]:
+        if not lit_segments:
+            return {}
+        sample = next(iter(lit_segments.values()))
+        if isinstance(sample, (set, frozenset)):
+            return {(i, seg): 1.0 for i, segs in lit_segments.items() for seg in segs}
+        return lit_segments  # already {(digit_index, segment_name): intensity}
 
     def _draw_bezel(self, surface: pygame.Surface) -> None:
         w, h = self.width, self.height
@@ -187,13 +207,16 @@ class SevenSegmentDisplay:
         surface.set_at((w - 1, h - 1), BEZEL_CORNER)
 
     def _draw_digit(
-        self, surface: pygame.Surface, origin_x: int, lit_segment_names: set[str], dot_lit: bool
+        self,
+        surface: pygame.Surface,
+        origin_x: int,
+        digit_index: int,
+        intensity: dict[tuple[int, str], float],
+        dot_lit: bool,
     ) -> None:
-        lit_pixels: set[tuple[int, int]] = (
-            set().union(*(SEGMENTS[s] for s in lit_segment_names)) if lit_segment_names else set()
-        )
         for (x, y) in ALL_SEGMENT_PIXELS:
-            color = LIT if (x, y) in lit_pixels else UNLIT
+            level = intensity.get((digit_index, _PIXEL_TO_SEGMENT[(x, y)]), 0.0)
+            color = lerp_color(UNLIT, LIT, level)
             surface.set_at((origin_x + x, self.border + y), color)
         dot_color = LIT if dot_lit else UNLIT
         for (dx, dy) in DOT_PIXELS:

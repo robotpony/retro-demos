@@ -18,7 +18,7 @@ import random
 
 import pygame
 
-from retrodemos.framework.graph_walk import Snake, bfs_rings
+from retrodemos.framework.graph_walk import Burst, Snake
 from retrodemos.framework.led_grid import DIGIT_SEGMENTS, RING_ORDER, scroll_window, segment_adjacency
 from retrodemos.framework.phase import Phase
 from retrodemos.framework.ticker import Ticker
@@ -105,10 +105,10 @@ class NumbersPhase(Phase):
     for a couple of passes before handing off to the next phase."""
 
     DEFAULT_TEXT = "0123456789"
-    # Playtesting (2026-08-26): "speed up number scroll, 50% faster" --
-    # the rate increases 50% (time / 1.5), not the original interval cut
-    # in half.
-    SCROLL_INTERVAL = 0.4 / 1.5
+    # Playtesting (2026-08-26): first "speed up number scroll, 50% faster"
+    # (0.4/1.5), then "still scrolls too slowly" on a second pass -- this
+    # is a further, bigger jump rather than another incremental percentage.
+    SCROLL_INTERVAL = 0.4 / 3.5
     LAPS = 2
 
     def __init__(self, display, rng: random.Random, text: str | None = None) -> None:
@@ -133,19 +133,28 @@ class NumbersPhase(Phase):
         self.display.render(surface, window)
 
 
+def _horizontal_bias(current: tuple[int, str], candidate: tuple[int, str]) -> float:
+    """Weight a candidate step higher when it crosses into a different
+    digit cell than the snake's current head -- playtesting (2026-08-26:
+    "moving horizontally more") wanted the crawl to drift across the
+    display rather than loop within one digit's own 7 segments."""
+    return 4.0 if candidate[0] != current[0] else 1.0
+
+
 class SnakePhase(Phase):
     """A snake crawls the segment-adjacency graph: starts as 1 lit segment,
-    grows by one each step until it's 5 long, then keeps moving at that
-    length, reshaping as it goes."""
+    grows by one each step until it's MAX_LENGTH long, then keeps moving
+    at that length, reshaping as it goes. Weighted toward crossing digits
+    (see `_horizontal_bias`) rather than a uniform random walk."""
 
     STEP_INTERVAL = 0.12
-    MAX_LENGTH = 5
-    STEPS = 60
+    MAX_LENGTH = 9  # playtesting (2026-08-26): "grow longer by at least a few segments" -- was 5
+    STEPS = 100  # scaled up with MAX_LENGTH so the wander phase still gets a real stretch after growing
 
     def reset(self) -> None:
         graph = segment_adjacency(self.display.digit_count)
         start = self.rng.choice(list(graph.keys()))
-        self._snake = Snake(graph, start, self.MAX_LENGTH, self.rng)
+        self._snake = Snake(graph, start, self.MAX_LENGTH, self.rng, weight_fn=_horizontal_bias)
         self._ticker = Ticker(self.STEP_INTERVAL)
         self._steps_taken = 0
 
@@ -163,15 +172,23 @@ class SnakePhase(Phase):
 
 
 class ExplosionPhase(Phase):
-    """A firework: picks a random digit, then lights up segments radiating
-    outward from its centre (ring by ring, through the adjacency graph,
-    capped at MAX_RING so a burst stays local), fades to black, and repeats
-    from a new random digit REPEATS times before moving on."""
+    """A firework: picks a random digit, then radiates outward from its
+    centre via `graph_walk.Burst` (ring-by-ring ignition, then a scatter
+    of extra sparks, each node fading independently), and repeats from a
+    new random digit REPEATS times before moving on.
+
+    Rebuilt 2026-08-26 on `Burst` -- it used to hand-roll the same ring
+    expansion (`bfs_rings`) with one flat, all-or-nothing fade instead of
+    real per-node brightness falloff (playtesting: "brightness falling
+    off"), the adoption `graph_walk.py`'s own docstring already flagged
+    as a likely future move once LED II's RipplePhase proved the class
+    out. MAX_RING also grew from 3 to 6 ("explode further")."""
 
     REPEATS = 5
     RING_INTERVAL = 0.09
-    MAX_RING = 3
-    FADE_HOLD = 0.15
+    MAX_RING = 6
+    FADE_DURATION = 0.5
+    SPARK_COUNT = 6
 
     def reset(self) -> None:
         self._graph = segment_adjacency(self.display.digit_count)
@@ -180,36 +197,29 @@ class ExplosionPhase(Phase):
 
     def _start_new_burst(self) -> None:
         digit_i = self.rng.randrange(self.display.digit_count)
-        self._rings = bfs_rings(self._graph, (digit_i, "g"), self.MAX_RING)
-        self._current_ring = 0
+        self._burst = Burst(
+            self._graph, (digit_i, "g"), self.MAX_RING, self.FADE_DURATION, self.SPARK_COUNT, self.rng
+        )
+        self._burst.expand_next_ring()  # light the centre immediately, not on the first tick
         self._ticker = Ticker(self.RING_INTERVAL)
-        self._fade_elapsed = 0.0
-        self._stage = "expand"
 
     def update(self, dt: float) -> bool:
-        if self._stage == "expand":
+        self._burst.age(dt)
+        if self._burst.is_expanding:
             for _ in range(self._ticker.advance(dt)):
-                self._current_ring += 1
-                if self._current_ring >= len(self._rings):
-                    self._stage = "fade"
-                    break
+                self._burst.expand_next_ring()
+        else:
+            self._burst.add_sparks()
+        if not self._burst.burned_out:
             return False
-        # stage == "fade"
-        self._fade_elapsed += dt
-        if self._fade_elapsed >= self.FADE_HOLD:
-            self._repeat_index += 1
-            if self._repeat_index >= self.REPEATS:
-                return True
-            self._start_new_burst()
+        self._repeat_index += 1
+        if self._repeat_index >= self.REPEATS:
+            return True
+        self._start_new_burst()
         return False
 
     def draw(self, surface: pygame.Surface) -> None:
-        lit: dict[int, set[str]] = {}
-        if self._stage == "expand":
-            for ring in self._rings[: self._current_ring + 1]:
-                for digit_i, seg in ring:
-                    lit.setdefault(digit_i, set()).add(seg)
-        self.display.render_raw(surface, lit)
+        self.display.render_raw(surface, self._burst.intensities())
 
 
 class WordsPhase(Phase):

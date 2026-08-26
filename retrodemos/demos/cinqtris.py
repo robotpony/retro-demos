@@ -158,12 +158,16 @@ def _draw_madmax(surface: pygame.Surface, x0: int, y0: int) -> None:
 
 
 # ---- Layout -- new design, not measured (the source is a sprite sheet,
-# not a mockup of the finished screen); see module docstring. ----
+# not a mockup of the finished screen); see module docstring. Playtesting
+# (2026-08-26) trimmed the margins to the bare minimum: 1px top, nothing
+# on the other three sides -- both elements already fill CONTENT_W
+# exactly, so any left/right padding was pure dead space, and the bottom
+# edge reads better flush against the equalizer's own bevel.
 CONTENT_W = len(WORD_LETTERS) * LETTER_W  # 128 -- wordmark and equalizer share this width exactly
-PADDING = 6
-TOP_MARGIN = 6
+PADDING = 0
+TOP_MARGIN = 1
 WORD_EQ_GAP = 3  # gap between title and equalizer -- ordinary spacing, NOT the title's own 1px rule
-BOTTOM_MARGIN = 6
+BOTTOM_MARGIN = 0
 
 WORD_X = PADDING  # (CONTENT_W - CONTENT_W) // 2 == 0 -- both elements are the same width, so centring is a no-op
 WORD_Y = TOP_MARGIN

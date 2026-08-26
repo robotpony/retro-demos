@@ -99,7 +99,12 @@ ICON_SCALE = 3  # icon glyph pixel scale; labels render at the font's own native
 ICON_SLOT_W = 110
 ICON_SLOT_H = 70
 ICON_ORIGIN = (30, MENU_BAR_HEIGHT + 19)  # 19px gap below the bar, same gap the bar itself replaced
-ICON_GRID_ROWS = 6  # icons per column before wrapping to a new column, classic desktop-style
+# Playtesting (2026-08-26): "all icons should fit down the left side" --
+# raised from 6 so all 7 visible icons (8 demos minus the hidden
+# bruces_windows) stay in one column instead of wrapping. 546px of
+# vertical room below the bar / 70px per slot already fits 7 without
+# shrinking ICON_SLOT_H at all.
+ICON_GRID_ROWS = 9
 LABEL_GAP = 5  # px between an icon's glyph and its label, at ICON_SCALE
 
 # Icon glyphs: new pixel art, "#"=lit, not archaeology -- see module
@@ -213,13 +218,19 @@ _ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
 # desktop window.
 _CHROMELESS = {"tank_status_window"}
 
-# Disabled outright, regardless of open state -- greyed out and inert,
-# still visible rather than removed. Bruce's Windows started as the
+# Hidden from the icon grid entirely (2026-08-26: dimmed-but-visible read
+# as clutter once there were 8 icons) -- Bruce's Windows started as the
 # demo that validated the desktop's own window-chrome pattern, but a
 # demo *of* windowing inside a real windowing system now reads as
-# redundant; parked here rather than removed since a use for it may
-# still turn up (2026-08-25).
+# redundant. Parked here rather than removed from _DEMO_ENTRIES since a
+# use for it may still turn up; still launchable by name
+# (`python -m retrodemos bruces_windows`), just not from the desktop.
 _PERMANENTLY_DISABLED = {"bruces_windows"}
+
+# The icon grid skips anything in _PERMANENTLY_DISABLED entirely (no
+# slot, no dimmed placeholder) so the remaining icons pack down the left
+# column without a gap -- computed once since _DEMO_ENTRIES is static.
+_VISIBLE_DEMO_ENTRIES = [entry for entry in _DEMO_ENTRIES if entry[0] not in _PERMANENTLY_DISABLED]
 
 # What the menu bar calls each open-window key -- most come straight from
 # _DEMO_ENTRIES, but CD Player's two chromeless windows (cd_player_main/
@@ -633,7 +644,7 @@ class DesktopDemo(Demo):
                 self._dragging = key
             return
 
-        for i, (demo_key, title, demo_cls) in enumerate(_DEMO_ENTRIES):
+        for i, (demo_key, title, demo_cls) in enumerate(_VISIBLE_DEMO_ENTRIES):
             if self._icon_disabled(demo_key):
                 continue
             if _icon_slot_rect(i).collidepoint(pos):
@@ -655,10 +666,12 @@ class DesktopDemo(Demo):
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(DESKTOP_BG)
-        # Every icon stays visible always -- an open (or permanently
-        # disabled) demo's icon just goes inert and dims, rather than
-        # disappearing (2026-08-25: disappearing "is weird").
-        for i, (key, title, _demo_cls) in enumerate(_DEMO_ENTRIES):
+        # Every *visible* icon stays up always -- an open demo's icon
+        # just goes inert and dims rather than disappearing (2026-08-25:
+        # disappearing "is weird"). _PERMANENTLY_DISABLED icons are a
+        # different thing (2026-08-26: not dimmed, not shown at all --
+        # see _VISIBLE_DEMO_ENTRIES).
+        for i, (key, title, _demo_cls) in enumerate(_VISIBLE_DEMO_ENTRIES):
             _draw_icon(surface, key, title, _icon_slot_rect(i), disabled=self._icon_disabled(key))
         for key in self._order:
             win = self._open[key]

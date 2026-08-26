@@ -13,6 +13,7 @@ from retrodemos.demos.desktop import (
     MENU_TEXT,
     _CMD_GLYPH,
     _DEMO_ENTRIES,
+    _VISIBLE_DEMO_ENTRIES,
     _MENU_ITEMS,
     DesktopDemo,
     _app_title_rect,
@@ -82,12 +83,13 @@ def test_clicking_a_disabled_icon_does_nothing():
     assert win.pos == start_pos
 
 
-def test_bruces_windows_icon_is_permanently_disabled():
+def test_bruces_windows_icon_is_hidden_entirely():
+    # Not just dimmed -- excluded from the icon grid altogether
+    # (2026-08-26), so it has no slot to click at all.
     demo = DesktopDemo()
-    index = next(i for i, (key, _title, _cls) in enumerate(_DEMO_ENTRIES) if key == "bruces_windows")
     assert demo._icon_disabled("bruces_windows") is True
-    _click(demo, _icon_slot_rect(index).center)
-    assert demo._open == {}
+    assert all(key != "bruces_windows" for key, _title, _cls in _VISIBLE_DEMO_ENTRIES)
+    assert "bruces_windows" not in demo._open
 
 
 def test_opening_two_demos_keeps_both_and_orders_by_recency():
