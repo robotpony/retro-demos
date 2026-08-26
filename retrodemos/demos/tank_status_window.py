@@ -27,7 +27,14 @@ the same "window inside a window" bug CD Player's own two windows hit
 first. `WIN1.png` has no close control of its own (only the minimize and
 dropdown boxes), so the minimize box doubles as this demo's close
 control when opened from the desktop -- `close_rect` and `closed` follow
-the same convention `cd_player.py`'s own chromeless windows use.
+the same convention `cd_player.py`'s own chromeless windows use. Confirmed
+2026-08-26 playtesting: this was already working, not a new fix.
+
+The same playtesting round added `_ButtonRowAnimator`: an ambient,
+non-functional press animation for the bottom button row (which also
+gained its own invented icons -- see `tank_status_window_grid.py`'s
+`_BUTTON_ICONS`), owned by the demo itself rather than any one phase so
+it keeps animating across phase transitions.
 """
 
 from __future__ import annotations
@@ -36,10 +43,41 @@ import random
 
 import pygame
 
-from retrodemos.demos.tank_status_window_grid import MIN_BOX_RECT, NATIVE_SIZE, TankDisplay
+from retrodemos.demos.tank_status_window_grid import BUTTON_COUNT, MIN_BOX_RECT, NATIVE_SIZE, TankDisplay
 from retrodemos.demos.tank_status_window_phases import EngagePhase, PatrolPhase, ResetPhase
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.phase import PhaseSequence
+
+
+class _ButtonRowAnimator:
+    """Ambient, non-functional press animation for the bottom button row
+    (2026-08-26 playtesting: the buttons "should be pressable, but
+    ultimately do nothing other than animate"): picks a random button,
+    holds it "pressed" for PRESS_DURATION, waits a random gap, then picks
+    another. Owned by the demo itself rather than any one phase so it
+    keeps animating uninterrupted across phase transitions -- unlike the
+    tanks/status text, which each phase reseeds on its own reset()."""
+
+    PRESS_DURATION = 0.15
+    GAP_RANGE = (0.4, 1.6)
+
+    def __init__(self, rng: random.Random) -> None:
+        self.rng = rng
+        self.pressed_index: int | None = None
+        self._elapsed = 0.0
+        self._target = self.rng.uniform(*self.GAP_RANGE)
+
+    def update(self, dt: float) -> None:
+        self._elapsed += dt
+        if self._elapsed < self._target:
+            return
+        self._elapsed = 0.0
+        if self.pressed_index is None:
+            self.pressed_index = self.rng.randrange(BUTTON_COUNT)
+            self._target = self.PRESS_DURATION
+        else:
+            self.pressed_index = None
+            self._target = self.rng.uniform(*self.GAP_RANGE)
 
 
 class TankStatusWindowDemo(Demo):
@@ -53,6 +91,7 @@ class TankStatusWindowDemo(Demo):
             EngagePhase(self._display, self._rng),
             ResetPhase(self._display, self._rng),
         ])
+        self._buttons = _ButtonRowAnimator(self._rng)
         self.close_rect = pygame.Rect(*MIN_BOX_RECT)
         self.closed = False
 
@@ -65,6 +104,8 @@ class TankStatusWindowDemo(Demo):
 
     def update(self, dt: float) -> None:
         self._sequence.update(dt)
+        self._buttons.update(dt)
+        self._display.pressed_button = self._buttons.pressed_index
 
     def draw(self, surface: pygame.Surface) -> None:
         self._sequence.draw(surface)

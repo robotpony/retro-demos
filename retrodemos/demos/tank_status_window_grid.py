@@ -164,7 +164,14 @@ DROPDOWN_ARROW_MASK: tuple[str, ...] = (
 )
 
 
-RED_X1 = 270  # exclusive -- past this the outer black hairline is 3px wide, not 1 (measured, asymmetric)
+# Measured off WIN1.png, the right-side outer black hairline is 3px wide
+# (270-272) rather than mirroring the left/top/bottom sides' 1px -- a real
+# source asymmetry, kept faithfully through the 2026-08-26 reconstruct-
+# and-diff pass. A later playtesting round on the built demo called it out
+# as reading like a stray extra black line rather than a border, so this
+# is now a deliberate departure from the source: RED_X1 extends 2px
+# further, leaving a symmetric 1px hairline on all four sides.
+RED_X1 = WINDOW_W - 1  # exclusive -- 272, matching the left/top/bottom border width
 
 
 def _draw_frame(surface: pygame.Surface) -> None:
@@ -297,7 +304,83 @@ def _draw_dots(
         surface.fill(colour, (x0 + col * PITCH, y0 + row * PITCH, DOT_SIZE, DOT_SIZE))
 
 
-def _draw_button_row(surface: pygame.Surface) -> None:
+# Purely decorative icon glyphs for the button row (2026-08-26
+# playtesting: the buttons "should get icons (black)" and "should be
+# pressable, but ultimately do nothing other than animate") -- no source
+# data exists for what these 11 blank buttons ever did (WIN1.png shows
+# them blank), so these are invented pictograms, not measured content.
+# Cycled across the 11 buttons by index so neighbours read as distinct
+# controls rather than 11 copies of one icon.
+_BUTTON_ICONS: tuple[tuple[str, ...], ...] = (
+    (
+        "...#...",
+        "...#...",
+        "...#...",
+        "#######",
+        "...#...",
+        "...#...",
+        "...#...",
+    ),
+    (
+        "#.....#",
+        ".#...#.",
+        "..#.#..",
+        "...#...",
+        "..#.#..",
+        ".#...#.",
+        "#.....#",
+    ),
+    (
+        "....#..",
+        "...##..",
+        "..###..",
+        ".####..",
+        "..###..",
+        "...##..",
+        "....#..",
+    ),
+    (
+        "..#....",
+        "..##...",
+        "..###..",
+        "..####.",
+        "..###..",
+        "..##...",
+        "..#....",
+    ),
+    (
+        ".......",
+        ".#####.",
+        ".#...#.",
+        ".#...#.",
+        ".#...#.",
+        ".#####.",
+        ".......",
+    ),
+    (
+        "...#...",
+        "..###..",
+        ".#####.",
+        "#######",
+        ".#####.",
+        "..###..",
+        "...#...",
+    ),
+)
+
+
+def _draw_button_icon(surface: pygame.Surface, cell_x0: int, inner_y0: int, cell_w: int, inner_h: int, index: int, nudge: int) -> None:
+    glyph = _BUTTON_ICONS[index % len(_BUTTON_ICONS)]
+    gw, gh = len(glyph[0]), len(glyph)
+    gx = cell_x0 + (cell_w - gw) // 2 + nudge
+    gy = inner_y0 + (inner_h - gh) // 2 + nudge
+    for dy, row in enumerate(glyph):
+        for dx, ch in enumerate(row):
+            if ch == "#":
+                surface.set_at((gx + dx, gy + dy), BLACK)
+
+
+def _draw_button_row(surface: pygame.Surface, pressed: int | None = None) -> None:
     """One black_ring around the whole row (measured: its top/bottom
     border rows are solid black, mitered at the row's own 4 corners the
     same way every black_ring is -- no per-button ring). Each of the 11
@@ -306,7 +389,13 @@ def _draw_button_row(surface: pygame.Surface) -> None:
     column -- drawn shadow-first so the highlight wins the top-right
     corner it overlaps, the opposite priority from `_draw_dropdown_box`'s
     own corners (measured, not a shared convention -- each was checked
-    against the source independently)."""
+    against the source independently).
+
+    `pressed` (2026-08-26 playtesting) is an ambient, non-functional press
+    animation index: that button's bevel inverts (grey top/left instead
+    of white) and its icon nudges 1px, the same "invert + nudge" pressed
+    look `cd_player.py`'s transport buttons use -- decorative only, not
+    driven by any real click here."""
     rect = (BUTTON_ROW_X0, BUTTON_ROW_Y0, BUTTON_ROW_W, BUTTON_ROW_H)
     black_ring(surface, rect)
     inner_y0 = BUTTON_ROW_Y0 + 1
@@ -323,28 +412,37 @@ def _draw_button_row(surface: pygame.Surface) -> None:
         surface.set_at((x, BUTTON_ROW_Y0 + BUTTON_ROW_H - 1), PANEL)
     for i in range(BUTTON_COUNT):
         x0 = BUTTON_ROW_X0 + i * BUTTON_PITCH + 1
+        is_pressed = i == pressed
         if i == _FLAT_BUTTON_INDEX:
             # No bevel at all -- flat panel, except grey (not the usual
             # white) exactly where a normal button's highlight sits: its
             # top row and left column. See the constant's own comment.
             surface.fill(BEZEL_DARK, (x0, inner_y0, cell_w, 1))
             surface.fill(BEZEL_DARK, (x0, inner_y0 + 1, 1, inner_h - 1))
+            _draw_button_icon(surface, x0, inner_y0, cell_w, inner_h, i, 1 if is_pressed else 0)
             continue
-        surface.fill(BEZEL_DARK, (x0 + cell_w - 2, inner_y0, 2, inner_h))  # right shadow, full height
-        surface.fill(BEZEL_DARK, (x0, inner_y0 + inner_h - 2, cell_w, 2))  # bottom shadow, full width
-        surface.fill(WHITE, (x0, inner_y0, cell_w - 1, 1))  # top highlight, short of the right shadow
-        surface.fill(WHITE, (x0, inner_y0, 1, inner_h - 1))  # left highlight, short of the bottom shadow
+        top_left, bottom_right = (BEZEL_DARK, WHITE) if is_pressed else (WHITE, BEZEL_DARK)
+        surface.fill(bottom_right, (x0 + cell_w - 2, inner_y0, 2, inner_h))  # right shadow, full height
+        surface.fill(bottom_right, (x0, inner_y0 + inner_h - 2, cell_w, 2))  # bottom shadow, full width
+        surface.fill(top_left, (x0, inner_y0, cell_w - 1, 1))  # top highlight, short of the right shadow
+        surface.fill(top_left, (x0, inner_y0, 1, inner_h - 1))  # left highlight, short of the bottom shadow
+        _draw_button_icon(surface, x0, inner_y0, cell_w, inner_h, i, 1 if is_pressed else 0)
 
 
 class TankDisplay:
     """The shared render target `PatrolPhase`/`EngagePhase`/`ResetPhase`
     drive. `main_cells`/`secondary_cells` are either a set of lit
     (col, row) cells or a dict mapping cell to 0..1 intensity (for a
-    Burst's fading embers); each phase owns the fields it writes to."""
+    Burst's fading embers); each phase owns the fields it writes to.
+    `pressed_button` (2026-08-26) is owned by the demo itself, not any
+    one phase -- see `tank_status_window.py`'s `_ButtonRowAnimator` --
+    since the ambient button animation keeps running across phase
+    transitions, unlike the tanks/status text those phases reseed."""
 
     def __init__(self) -> None:
         self.main_cells: dict[tuple[int, int], float] | set[tuple[int, int]] = set()
         self.secondary_cells: dict[tuple[int, int], float] | set[tuple[int, int]] = set()
+        self.pressed_button: int | None = None
 
     def draw(self, surface: pygame.Surface) -> None:
         _draw_frame(surface)
@@ -353,7 +451,7 @@ class TankDisplay:
         _draw_grid_frames(surface)
         _draw_dots(surface, GRID_X0, MAIN_GRID_Y0, MAIN_COLS, MAIN_ROWS, self.main_cells)
         _draw_dots(surface, GRID_X0, SEC_GRID_Y0, SEC_COLS, SEC_ROWS, self.secondary_cells)
-        _draw_button_row(surface)
+        _draw_button_row(surface, self.pressed_button)
 
 
 NATIVE_SIZE = (WINDOW_W, WINDOW_H)
