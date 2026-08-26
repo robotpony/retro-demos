@@ -29,6 +29,37 @@ RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")  # co
 BACK_W, BACK_H = 64, 82
 BACK_DESIGNS = 2  # only the top row's two designs are used
 
+# Every card and both backs have the same rounded-corner cut: a 3px "L"
+# notch per corner, measured identically across a dozen sampled cards
+# (see bruces_21.py's module docstring) -- position-based, not
+# colour-based, since CARDS.png and BACKS.png fill that notch with two
+# different flat greys ((192,192,192) vs (198,198,198)), neither of
+# which is meant to be part of the card art. Playtesting (2026-08-26):
+# blitting the tiles as opaque rectangles left those grey corners
+# showing over the felt instead of rounding into it.
+_TRANSPARENT = (0, 0, 0, 0)
+
+
+def _punch_rounded_corners(tile: pygame.Surface) -> None:
+    w, h = tile.get_size()
+    for x, y in ((0, 0), (1, 0), (0, 1)):
+        tile.set_at((x, y), _TRANSPARENT)
+    for x, y in ((w - 1, 0), (w - 2, 0), (w - 1, 1)):
+        tile.set_at((x, y), _TRANSPARENT)
+    for x, y in ((0, h - 1), (1, h - 1), (0, h - 2)):
+        tile.set_at((x, y), _TRANSPARENT)
+    for x, y in ((w - 1, h - 1), (w - 2, h - 1), (w - 1, h - 2)):
+        tile.set_at((x, y), _TRANSPARENT)
+
+
+def _alpha_copy(source: pygame.Surface) -> pygame.Surface:
+    """A copy with a real per-pixel alpha channel -- subsurfaces of an
+    image loaded without convert_alpha() share the source file's own
+    format, which has no alpha to punch a transparent notch into."""
+    tile = pygame.Surface(source.get_size(), pygame.SRCALPHA)
+    tile.blit(source, (0, 0))
+    return tile
+
 
 class Deck:
     """Loads CARDS.png/BACKS.png once and slices out every tile."""
@@ -40,16 +71,25 @@ class Deck:
         self._cards: dict[tuple[str, str], pygame.Surface] = {}
         for row, suit in enumerate(SUITS):
             for col, rank in enumerate(RANKS):
-                self._cards[(suit, rank)] = cards_sheet.subsurface(
-                    (col * CARD_W, row * CARD_H, CARD_W, CARD_H)
-                )
+                tile = _alpha_copy(cards_sheet.subsurface((col * CARD_W, row * CARD_H, CARD_W, CARD_H)))
+                _punch_rounded_corners(tile)
+                self._cards[(suit, rank)] = tile
 
-        self._backs: list[pygame.Surface] = [
-            backs_sheet.subsurface((i * BACK_W, 0, BACK_W, BACK_H)) for i in range(BACK_DESIGNS)
-        ]
-        self._backs_for_slot: list[pygame.Surface] = [
-            pygame.transform.scale(back, (CARD_W, CARD_H)) for back in self._backs
-        ]
+        self._backs: list[pygame.Surface] = []
+        for i in range(BACK_DESIGNS):
+            tile = _alpha_copy(backs_sheet.subsurface((i * BACK_W, 0, BACK_W, BACK_H)))
+            _punch_rounded_corners(tile)
+            self._backs.append(tile)
+
+        # Scaled to card size for a hand slot; corners punched fresh at
+        # that size rather than scaling the 64x82 tile's own notch down,
+        # so the cut stays the same crisp 3px "L" every card has, not
+        # whatever a nearest-neighbour resize of it happens to produce.
+        self._backs_for_slot: list[pygame.Surface] = []
+        for back in self._backs:
+            slot_tile = pygame.transform.scale(back, (CARD_W, CARD_H))
+            _punch_rounded_corners(slot_tile)
+            self._backs_for_slot.append(slot_tile)
 
     def card(self, suit: str, rank: str) -> pygame.Surface:
         return self._cards[(suit, rank)]
