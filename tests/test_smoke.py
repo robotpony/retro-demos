@@ -240,3 +240,10 @@ def test_bruces_21_demo_runs_headlessly():
 
     demo = Bruces21Demo()
     run(demo, scale=2, fps=1000, max_frames=5)
+
+
+def test_tank_status_window_demo_runs_headlessly():
+    from retrodemos.demos.tank_status_window import TankStatusWindowDemo
+
+    demo = TankStatusWindowDemo()
+    run(demo, scale=2, fps=1000, max_frames=5)

@@ -66,6 +66,7 @@ from retrodemos.demos.cd_player import CDPlayerEqualizerWindow, CDPlayerMainWind
 from retrodemos.demos.cinqtris import CinqtrisDemo
 from retrodemos.demos.led import LedDemo
 from retrodemos.demos.led_ii import LedIIDemo
+from retrodemos.demos.tank_status_window import TankStatusWindowDemo
 from retrodemos.demos.title import TitleDemo
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.pixel_font import GLYPH_GAP, GLYPH_H, text_cells
@@ -169,11 +170,18 @@ _ICON_GLYPHS: dict[str, tuple[str, ...]] = {
         "#.....#",
         ".#####.",
     ),
+    "tank_status_window": (
+        "...#...",
+        "..###..",
+        ".#####.",
+        "#######",
+        "..#.#..",
+    ),
 }
 
 # (module key, display title, Demo class) -- a curated, fixed list, not a
 # generic directory scan like __main__.py's -- the desktop only ever shows
-# these seven icons, in this order. cd_player's class slot is None: it
+# these eight icons, in this order. cd_player's class slot is None: it
 # doesn't open through the generic single-window path at all (see
 # _open_cd_player_main below) -- its icon and cascade position still come
 # from this table, but opening it is special-cased.
@@ -185,6 +193,7 @@ _DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
     ("bruces_windows", "WINDOWS", BruceWindowsDemo),
     ("cinqtris", "CINQTRIS", CinqtrisDemo),
     ("bruces_21", "BRUCE'S 21", Bruces21Demo),
+    ("tank_status_window", "TANK STATUS", TankStatusWindowDemo),
 ]
 
 # cd_player's icon represents two independently-opened windows, not one
