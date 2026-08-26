@@ -18,6 +18,16 @@ Uses `Phase`/`PhaseSequence` like LED/LED II/Title/Bruce's 21: the spec
 describes an automated game "playing itself" as a loop, which reads
 naturally as a small script (patrol -> engage -> reset) rather than one
 continuous behaviour.
+
+Opens chromeless on the desktop shell (`desktop.py`'s `_CHROMELESS`,
+2026-08-26): this demo's own `draw()` already produces WIN1.png's
+complete red/black window frame, so wrapping it in the desktop's generic
+window chrome nested one frame inside another -- caught in playtesting,
+the same "window inside a window" bug CD Player's own two windows hit
+first. `WIN1.png` has no close control of its own (only the minimize and
+dropdown boxes), so the minimize box doubles as this demo's close
+control when opened from the desktop -- `close_rect` and `closed` follow
+the same convention `cd_player.py`'s own chromeless windows use.
 """
 
 from __future__ import annotations
@@ -26,7 +36,7 @@ import random
 
 import pygame
 
-from retrodemos.demos.tank_status_window_grid import NATIVE_SIZE, TankDisplay
+from retrodemos.demos.tank_status_window_grid import MIN_BOX_RECT, NATIVE_SIZE, TankDisplay
 from retrodemos.demos.tank_status_window_phases import EngagePhase, PatrolPhase, ResetPhase
 from retrodemos.framework.demo import Demo
 from retrodemos.framework.phase import PhaseSequence
@@ -43,6 +53,12 @@ class TankStatusWindowDemo(Demo):
             EngagePhase(self._display, self._rng),
             ResetPhase(self._display, self._rng),
         ])
+        self.close_rect = pygame.Rect(*MIN_BOX_RECT)
+        self.closed = False
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.close_rect.collidepoint(event.pos):
+            self.closed = True
 
     def reset(self) -> None:
         self._sequence.reset()

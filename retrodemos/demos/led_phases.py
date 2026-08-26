@@ -105,7 +105,10 @@ class NumbersPhase(Phase):
     for a couple of passes before handing off to the next phase."""
 
     DEFAULT_TEXT = "0123456789"
-    SCROLL_INTERVAL = 0.4
+    # Playtesting (2026-08-26): "speed up number scroll, 50% faster" --
+    # the rate increases 50% (time / 1.5), not the original interval cut
+    # in half.
+    SCROLL_INTERVAL = 0.4 / 1.5
     LAPS = 2
 
     def __init__(self, display, rng: random.Random, text: str | None = None) -> None:

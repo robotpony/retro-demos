@@ -99,16 +99,23 @@ class _Bullet:
             self.row = next_row
 
 
-MOVE_INTERVAL = 0.09
-FIRE_INTERVAL = 1.1
-IMPACT_MAX_RING = 3
-IMPACT_FADE = 0.5
-BLAST_MAX_RING = 14
-BLAST_FADE = 1.3
+# Playtesting (2026-08-26): "animation should be faster (15%)" -- every
+# duration below is scaled by _SPEED, not hand-retuned individually, so
+# the whole script speeds up uniformly rather than just a few phases.
+# "15% faster" means the rate increases 15% (time / 1.15), not time cut
+# by 15%.
+_SPEED = 1 / 1.15
 
-PATROL_DURATION = 3.5
+MOVE_INTERVAL = 0.09 * _SPEED
+FIRE_INTERVAL = 1.1 * _SPEED
+IMPACT_MAX_RING = 3
+IMPACT_FADE = 0.5 * _SPEED
+BLAST_MAX_RING = 14
+BLAST_FADE = 1.3 * _SPEED
+
+PATROL_DURATION = 3.5 * _SPEED
 ENGAGE_SHOT_COUNT = 5
-RESET_HOLD = 0.7
+RESET_HOLD = 0.7 * _SPEED
 
 
 class _TankSceneBase(Phase):

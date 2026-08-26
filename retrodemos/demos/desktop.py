@@ -202,6 +202,17 @@ _DEMO_ENTRIES: list[tuple[str, str, type[Demo] | None]] = [
 # on CDPlayerMainWindow/CDPlayerEqualizerWindow for why they're separate).
 _ICON_OPEN_KEY = {"cd_player": "cd_player_main"}
 
+# Demos whose own draw() already produces complete window chrome (own
+# border, own title bar) -- opened without the generic wrapper, same
+# "should get a real window, not a window inside a window" reasoning
+# CD Player's own two windows got (2026-08-25), but simple enough here
+# (one window, no dual-window bookkeeping) not to need CD Player's own
+# fully special-cased open path -- just skip the wrapper in _open_demo.
+# Tank Status Window added 2026-08-26: playtesting caught its generic
+# wrapper nesting WIN1.png's own red/black frame inside a second, plain
+# desktop window.
+_CHROMELESS = {"tank_status_window"}
+
 # Disabled outright, regardless of open state -- greyed out and inert,
 # still visible rather than removed. Bruce's Windows started as the
 # demo that validated the desktop's own window-chrome pattern, but a
@@ -462,7 +473,8 @@ class DesktopDemo(Demo):
         if key in self._open:
             self._focus(key)
             return
-        self._open[key] = _OpenWindow(key, title, demo_cls(text=None), self._next_cascade_pos())
+        chrome = key not in _CHROMELESS
+        self._open[key] = _OpenWindow(key, title, demo_cls(text=None), self._next_cascade_pos(), chrome=chrome)
         self._order.append(key)
 
     def _next_cascade_pos(self) -> tuple[int, int]:

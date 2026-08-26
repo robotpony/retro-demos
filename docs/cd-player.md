@@ -54,6 +54,16 @@ each catching a real mistake the previous one missed:
    buttons also gained a press animation (inverted highlight + 1px
    nudge) on click -- invented, no source data exists for a pressed
    state -- and their close buttons now actually close their window.
+5. **Fifth pass** (2026-08-26 playtesting) found the transport icons
+   still off-centre even after the fourth pass's fix -- that pass solved
+   clipping but not centring; icon offsets are now each icon's own
+   black-pixel bounding box matched against the source's, not eyeballed.
+   The readout's two dot areas were also reconsidered: the big dot-matrix
+   area (previously a generic level meter) now scrolls a marquee -- the
+   current fake track's title, then "0123456789" as a lighter-weight nod
+   to LED's own number-scroll phase -- and the small dot swatch beside
+   "1AR" (previously a static copy of the source's own all-lit test
+   pattern) now animates as a real per-column frequency bar meter.
 
 Every piece is pixel-verified against Band A directly for the two real
 windows (not Band B, which is reference material only -- confirmed by
@@ -69,10 +79,13 @@ Band B's copies of the same icons):
   colour (measured red), 3 digits at a 12px pitch.
 - **Dot-matrix spectrum + level meter**: pixel-verified 2px NW-SE
   diagonal dot shape at a 3px pitch, red/green, colours used directly
-  from the source.
-- **Status cluster** ("repeat/shuffle/1AR" text plus a small dense dot
-  swatch): no pixel font was built for this one-off text; it's copied
-  verbatim as a lit/unlit pixel mask, the same approach as the icons.
+  from the source; now drives a scrolling track-title marquee rather
+  than a generic level meter (2026-08-26, see Behaviour).
+- **Status cluster** ("repeat/shuffle/1AR" text): no pixel font was
+  built for this one-off text; it's copied verbatim as a lit/unlit pixel
+  mask, the same approach as the icons. The small dense dot swatch next
+  to it is no longer part of that static mask -- it's a live per-column
+  frequency bar meter now (2026-08-26).
 - **Transport buttons**: sunken sub-panel, each button a light 3-sided
   highlight (top/left/right) inside it -- a different style than the
   window frame's own bevel, and different again from Band B's flat-grey
@@ -96,8 +109,12 @@ same reasoning Dooley's continuous design used):
 - Playback pauses for `PAUSE_DURATION` (3s) every `PAUSE_EVERY` (25s) of
   play, and the transport buttons pick out "play" or "pause" (its icon
   picked out in red) to match.
-- The dot-matrix meter fakes a waveform (summed sine curves, invented,
-  not a real audio analysis) that goes quiet while paused.
+- The small dot-matrix EQ swatch (beside "1AR") fakes a per-column
+  frequency reading (summed sine curves, invented, not a real audio
+  analysis) that goes quiet while paused.
+- The big dot-matrix area scrolls a marquee: the current fake track's
+  title ("TRACK 01", no real metadata exists), then "0123456789" as a
+  nod to LED's own number-scroll phase, looping between the two.
 
 ## Interaction
 

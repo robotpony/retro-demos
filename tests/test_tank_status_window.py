@@ -33,6 +33,34 @@ from retrodemos.demos.tank_status_window_phases import (
 )
 
 
+# Deliberately not reproduced -- a one-row (y=327) scanline artifact in
+# the source where both side borders blip from red to black, then revert
+# the next row. Doesn't recur, isn't mirrored top/bottom the way the real
+# title-bar divider notches are, and lands on no structural boundary --
+# see tank_status_window_grid.py's module docstring for the full call.
+_KNOWN_SOURCE_ARTIFACT_PIXELS = {(1, 327), (2, 327), (268, 327), (269, 327)}
+
+
+def test_chrome_reconstructs_the_source_image_almost_exactly():
+    # WIN1.png's own grid is a lit-everywhere test pattern (see the
+    # module docstring), so setting every cell lit here reconstructs the
+    # *whole* source image, chrome included -- not just the grids.
+    display = TankDisplay()
+    display.main_cells = {(c, r) for r in range(MAIN_ROWS) for c in range(MAIN_COLS)}
+    display.secondary_cells = {(c, r) for r in range(SEC_ROWS) for c in range(SEC_COLS)}
+    mine = pygame.Surface((WINDOW_W, WINDOW_H))
+    display.draw(mine)
+    src = pygame.image.load("images/WIN1.png")
+    assert mine.get_size() == src.get_size()
+    mismatches = {
+        (x, y)
+        for y in range(WINDOW_H)
+        for x in range(WINDOW_W)
+        if mine.get_at((x, y))[:3] != src.get_at((x, y))[:3]
+    }
+    assert mismatches == _KNOWN_SOURCE_ARTIFACT_PIXELS
+
+
 def test_grid_dimensions_match_measured_source():
     # 83x84 main grid, 83x9 secondary strip, 11 buttons -- all measured
     # directly from images/WIN1.png (see tank_status_window_grid.py).

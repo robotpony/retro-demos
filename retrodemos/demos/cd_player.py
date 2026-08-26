@@ -40,7 +40,7 @@ sunken (reversed); individual transport buttons are a light 3-sided
 highlight (top/left/right) sitting inside that sunken well. The dot-matrix
 meter's own "dots" are a genuine 2px NW-SE diagonal glint, not a single
 pixel -- confirmed against both the spectrum area and Band C's reference
-strip, and missed by the first two passes (see _draw_meter). The digit
+strip, and missed by the first two passes (see _draw_dot_glint). The digit
 segment geometry, all button/close icons, the slider bank's track+tick
 geometry, and the "cd" logo (reused identically by both windows) are all
 literal coordinate/glyph data measured from the source. The one
@@ -60,6 +60,24 @@ just scoped to two windows instead of an open-ended set. The demo canvas
 (480x180) is bigger than the two windows combined so there's room to
 drag them apart; they start docked together, matching the source
 screenshot's own layout.
+
+A third playtest pass (2026-08-26) reconsidered the readout's two dot
+areas. The transport icons were still visibly off-centre (the 2026-08-25
+fix solved clipping but not centring -- each `icon_offset` now comes from
+matching the icon's own black-pixel bounding box in `_ICON_ROWS` against
+its measured bounding box in the source, not eyeballed placement). More
+substantially: the big dot area (formerly a generic "spectrum meter") now
+scrolls a marquee -- the current fake track's title, then "0123456789"
+(a nod to LED's own `NumbersPhase` scroll, the lighter-weight version of
+"run the other LED demos on it" that doesn't require hosting a whole
+second Demo's update loop inside a differently-shaped display) -- and the
+small dot swatch beside "1AR" (previously a static all-lit copy of the
+source's own calibration pattern) now animates as a real per-column
+frequency bar meter, reusing the same simulated levels the equalizer
+slider bank doesn't have room to show. Both reuse Band C's measured
+green-on/red-off meter colours (`GREEN_ON`/`GREEN_OFF`) rather than the
+static readout's plain red, since both are now genuine meters, not
+fixed text.
 """
 
 from __future__ import annotations
@@ -69,6 +87,7 @@ import math
 import pygame
 
 from retrodemos.framework.demo import Demo
+from retrodemos.framework.pixel_font import text_cells
 from retrodemos.framework.ticker import Ticker
 from retrodemos.framework.window_chrome import bevel_rect
 
@@ -200,11 +219,16 @@ def _draw_icon(surface: pygame.Surface, x0: int, y0: int, name: str, *, active: 
 
 
 # The small status cluster right of the "888" counter -- a repeat/shuffle
-# icon plus "1AR" text, and a dense (2px pitch) dot-matrix swatch below
-# it. No pixel font was built for this text; it's copied verbatim as a
-# lit/unlit mask (x209-241, y2-28 in the source), the same approach the
-# "cd" logo and button icons use for one-off glyphs.
-_STATUS_CLUSTER_ROWS = (
+# icon plus "1AR" text. No pixel font was built for this text; it's
+# copied verbatim as a lit/unlit mask (x209-241, y2-11 in the source),
+# the same approach the "cd" logo and button icons use for one-off
+# glyphs. The dense (2px pitch) dot-matrix swatch that sits below it in
+# the source is no longer part of this fixed mask -- playtesting
+# (2026-08-26) repurposed it into an animated frequency bar meter (see
+# EQ_BAR_* / _draw_eq_bars below), since the source's own all-lit test
+# pattern there was never meant to be copied as static content, the same
+# reasoning that turned the big meter into a marquee.
+_STATUS_TEXT_ROWS = (
     "                                 ",
     "                                 ",
     "                                 ",
@@ -215,31 +239,35 @@ _STATUS_CLUSTER_ROWS = (
     "   #..#.......#   #..####.###    ",
     "    ####.#####    #..#..#.#..#   ",
     "      #..........###.#..#.#..#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "   #.#.#.#.#.#.#.#.#.#.#.#.#.#   ",
-    "                                 ",
-    "                                 ",
-    "                                 ",
 )
 
 
-def _draw_status_cluster(surface: pygame.Surface, x0: int, y0: int) -> None:
-    for dy, row in enumerate(_STATUS_CLUSTER_ROWS):
+def _draw_status_text(surface: pygame.Surface, x0: int, y0: int) -> None:
+    for dy, row in enumerate(_STATUS_TEXT_ROWS):
         for dx, ch in enumerate(row):
             if ch == "#":
                 surface.set_at((x0 + dx, y0 + dy), SEG_ON)
+
+
+# Small EQ swatch, measured the same 2px pitch/14x7 layout the source's
+# own static dot pattern used (see _STATUS_TEXT_ROWS' comment) -- now
+# driven by simulated levels instead of always-lit. Column/row origins
+# are relative to STATUS_ORIGIN, matching where the old static rows sat.
+EQ_BAR_X0 = 3
+EQ_BAR_Y0 = 11
+EQ_BAR_COLS = 14
+EQ_BAR_ROWS = 7
+EQ_BAR_PITCH = 2
+
+
+def _draw_eq_bars(surface: pygame.Surface, x0: int, y0: int, levels: list[float]) -> None:
+    for col in range(EQ_BAR_COLS):
+        level = levels[col % len(levels)]
+        lit_rows = round(level * EQ_BAR_ROWS)
+        for row in range(EQ_BAR_ROWS):
+            lit = row >= EQ_BAR_ROWS - lit_rows
+            colour = GREEN_ON if lit else GREEN_OFF
+            surface.set_at((x0 + EQ_BAR_X0 + col * EQ_BAR_PITCH, y0 + EQ_BAR_Y0 + row * EQ_BAR_PITCH), colour)
 
 
 def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fill: tuple[int, int, int] = PANEL) -> None:
@@ -262,17 +290,19 @@ def _sunken_box(surface: pygame.Surface, rect: tuple[int, int, int, int], *, fil
 # only, never for chrome. 5 buttons: prev/next on top, stop/pause/play
 # below -- there is no 6th "eject" button in the real window.
 _TRANSPORT_RECT = (247, 3, 37, 25)
-# icon_offset re-measured 2026-08-25 (Bruce flagged the icons as visibly
-# off against the source): prev/next were offset (4,6)/(2,6), 4 rows too
-# far down, clipping most of the glyph against the button's own bottom
-# edge -- the true offset for every icon is its own tight bounding box
-# within its button rect, measured directly rather than eyeballed.
+# icon_offset re-measured again 2026-08-26 (playtesting: still visibly
+# off-centre against the source, bleeding past the button edges) -- the
+# 2026-08-25 pass fixed the vertical clipping but never actually solved
+# for the offset that lands each icon's own black-pixel bounding box on
+# top of the source's, which is what these values are now: found by
+# comparing each button's measured black bbox in images/CDPLAYER.png
+# against the same bbox within `_ICON_ROWS`' own mask, not eyeballed.
 _TRANSPORT_BUTTONS = (
-    ("prev", (248, 4, 17, 10), (3, 2)),
-    ("next", (266, 4, 17, 10), (3, 2)),
-    ("stop", (248, 15, 11, 12), (3, 3)),
-    ("pause", (260, 15, 11, 12), (3, 3)),
-    ("play", (272, 15, 11, 12), (3, 2)),
+    ("prev", (248, 4, 17, 10), (0, 2)),
+    ("next", (266, 4, 17, 10), (1, 2)),
+    ("stop", (248, 15, 11, 12), (0, 3)),
+    ("pause", (260, 15, 11, 12), (1, 3)),
+    ("play", (272, 15, 11, 12), (2, 2)),
 )
 
 
@@ -342,19 +372,22 @@ def _draw_cd_logo(surface: pygame.Surface, x0: int, y0: int) -> None:
                 surface.set_at((x0 + dx, y0 + dy), _ICON_COLOUR[ch])
 
 
-# Each "dot" in the meter isn't a single pixel -- it's a 2px NW-SE
-# diagonal glint, confirmed both here and in Band C's own reference strip
-# (row y: one pixel; row y+1: the next pixel over). Missed in the first
-# two passes, which drew a single set_at() per dot.
-def _draw_meter(surface: pygame.Surface, x0: int, y0: int, cols: int, rows: int, levels: list[float]) -> None:
-    for col in range(cols):
-        lit_rows = round(levels[col % len(levels)] * rows)
-        for row in range(rows):
-            lit = row >= rows - lit_rows
-            colour = GREEN_ON if lit else GREEN_OFF
-            dx, dy = x0 + col * 3, y0 + row * 3
-            surface.set_at((dx, dy), colour)
-            surface.set_at((dx + 1, dy + 1), colour)
+# Each "dot" isn't a single pixel -- it's a 2px NW-SE diagonal glint,
+# confirmed both in the readout and in Band C's own reference strip (row
+# y: one pixel; row y+1: the next pixel over). Missed in the first two
+# passes, which drew a single set_at() per dot. Kept as the shared style
+# for the title marquee below -- still a dot-matrix display, just
+# scrolling text instead of a generic level meter now (2026-08-26
+# playtesting: "the left is a display for track titles").
+def _draw_dot_glint(surface: pygame.Surface, x: int, y: int, colour: tuple[int, int, int]) -> None:
+    surface.set_at((x, y), colour)
+    surface.set_at((x + 1, y + 1), colour)
+
+
+def _draw_title_marquee(surface: pygame.Surface, x0: int, y0: int, cols: int, cells: set[tuple[int, int]]) -> None:
+    for col, row in cells:
+        if 0 <= col < cols:
+            _draw_dot_glint(surface, x0 + col * 3, y0 + row * 3, GREEN_ON)
 
 
 # Window frames -- measured from Band A/the equalizer window directly:
@@ -372,7 +405,7 @@ def _draw_meter(surface: pygame.Surface, x0: int, y0: int, cols: int, rows: int,
 MAIN_WINDOW_RECT = (0, 0, 285, 32)
 EQ_WINDOW_RECT = (0, 0, 97, 54)
 READOUT_RECT = (19, 3, 223, 26)
-METER_ORIGIN = (21, 6)
+TITLE_ORIGIN = (21, 6)
 DIGITS_ORIGIN = (174, 5)
 STATUS_ORIGIN = (209, 2)
 CLOSE_ICON_OFFSET = (2, 2)
@@ -397,9 +430,10 @@ TRACK_LENGTH = 180.0  # seconds per fake track
 TRACK_COUNT = 12
 PAUSE_EVERY = 25.0  # seconds of play between pauses
 PAUSE_DURATION = 3.0
-METER_COLS = 50  # (168 - 21) // 3 + 1, matching the measured spectrum area
-METER_ROWS = 7
-METER_TICK = 0.06
+TITLE_COLS = 50  # (168 - 21) // 3 + 1, matching the measured spectrum area
+TITLE_ROWS = 7  # == pixel_font.GLYPH_H, so marquee text needs no row offset
+TITLE_SCROLL_SPEED = 10.0  # dot-columns/sec, invented
+EQ_TICK = 0.06
 SLIDER_LEVELS = [0.6, 0.4, 0.7, 0.5, 0.55, 0.45]  # invented -- no thumb visible in the source
 
 
@@ -431,12 +465,15 @@ class CDPlayerMainWindow(Demo):
         self._play_elapsed = 0.0  # time since the last pause ended
         self._paused = False
         self._pause_elapsed = 0.0
-        self._meter_ticker = Ticker(METER_TICK)
-        self._meter_phase = 0.0
-        self._levels = [0.0] * METER_COLS
+        self._eq_ticker = Ticker(EQ_TICK)
+        self._eq_phase = 0.0
+        self._levels = [0.0] * EQ_BAR_COLS
         self._pressed: str | None = None
         self.reveal_equalizer = False
         self.closed = False
+        self._marquee_mode = "title"
+        self._marquee_offset = 0.0
+        self._marquee_cells, self._marquee_width = self._marquee_content()
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -467,18 +504,32 @@ class CDPlayerMainWindow(Demo):
                 self._paused = True
                 self._pause_elapsed = 0.0
 
-        for _ in range(self._meter_ticker.advance(dt)):
-            self._meter_phase += 1
+        for _ in range(self._eq_ticker.advance(dt)):
+            self._eq_phase += 1
             self._update_levels()
+
+        self._marquee_offset += TITLE_SCROLL_SPEED * dt
+        if self._marquee_offset >= self._marquee_width + TITLE_COLS:
+            self._marquee_offset = 0.0
+            self._marquee_mode = "numbers" if self._marquee_mode == "title" else "title"
+            self._marquee_cells, self._marquee_width = self._marquee_content()
+
+    def _marquee_content(self) -> tuple[set[tuple[int, int]], int]:
+        # "title" is an invented placeholder ("TRACK 01", no real track
+        # metadata exists to show -- see module docstring); "numbers"
+        # scrolls "0123456789", the lighter-weight nod to LED's own
+        # NumbersPhase this demo borrows instead of hosting a second Demo.
+        text = f"TRACK {self._track:02d}" if self._marquee_mode == "title" else "0123456789"
+        return text_cells(text)
 
     def _update_levels(self) -> None:
         if self._paused:
-            self._levels = [0.0] * METER_COLS
+            self._levels = [0.0] * EQ_BAR_COLS
             return
-        t = self._meter_phase * 0.3
+        t = self._eq_phase * 0.3
         self._levels = [
             0.4 + 0.35 * math.sin(t + col * 0.5) + 0.2 * math.sin(t * 2.3 + col * 0.9)
-            for col in range(METER_COLS)
+            for col in range(EQ_BAR_COLS)
         ]
         self._levels = [max(0.05, min(1.0, level)) for level in self._levels]
 
@@ -493,14 +544,17 @@ class CDPlayerMainWindow(Demo):
         _draw_cd_logo(surface, lx, ly)
 
         _sunken_box(surface, READOUT_RECT, fill=BG)
-        mx, my = METER_ORIGIN
-        _draw_meter(surface, mx, my, METER_COLS, METER_ROWS, self._levels)
+        mx, my = TITLE_ORIGIN
+        offset = int(self._marquee_offset)
+        visible_cells = {(TITLE_COLS + cx - offset, cy) for cx, cy in self._marquee_cells}
+        _draw_title_marquee(surface, mx, my, TITLE_COLS, visible_cells)
         minutes, seconds = divmod(int(self._elapsed), 60)
         readout = f"{min(minutes, 9)}{seconds:02d}"
         dx, dy = DIGITS_ORIGIN
         _draw_digits(surface, dx, dy, readout, pitch=12)
         sx, sy = STATUS_ORIGIN
-        _draw_status_cluster(surface, sx, sy)
+        _draw_status_text(surface, sx, sy)
+        _draw_eq_bars(surface, sx, sy, self._levels)
 
         _draw_transport(surface, self._active_button(), pressed=self._pressed)
 
