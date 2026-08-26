@@ -27,6 +27,20 @@ dot grid -- the two callers' Phases now differ only in grid shape, spawn
 positions, and timing constants, not in the chase logic itself. LED's own
 SnakePhase (the segment-graph one) hasn't been ported to a chase minigame
 yet -- worth doing next time it's touched.
+
+`ChaseMatch` (2026-08-26, playtesting: "restart until one snake scores 3")
+wraps a sequence of rounds -- each a `ChasePair` or a small per-round
+wrapper of one, like Title's own `_TitleChase` -- into a best-of-N match:
+it scores a round exactly once when it finishes and starts a fresh one
+from a caller-supplied factory until a side reaches `wins_needed`. It only
+needs a round to expose `.finished` and `.winner_index` (0 or 1), which is
+why `ChasePair` gained that property alongside its existing `.winner`.
+
+`Rocket` (same request: fireworks "need to have the rocket portion") is a
+straight-line lerp from a launch point to a target over a short duration,
+for a fireworks Phase to fly a projectile to where a `Burst` is about to
+ignite before igniting it -- reused as-is by LED II's and Title's own
+fireworks phases (and, later, Tank Status Window's).
 """
 
 from __future__ import annotations
@@ -185,6 +199,15 @@ class ChasePair(Generic[Node]):
     def finished(self) -> bool:
         return self.resolved and self._flash_toggles >= self._flash_target
 
+    @property
+    def winner_index(self) -> int | None:
+        """0 if `a` won, 1 if `b` did, None if not yet resolved -- lets a
+        `ChaseMatch` score a round without knowing anything about `Node`
+        or which snake object is which."""
+        if self.winner is None:
+            return None
+        return 0 if self.winner is self.a else 1
+
     def step(self) -> None:
         """Advance both snakes one step. No-op once resolved -- check
         `resolved` before calling from a tick loop, same as `flash_tick`."""
@@ -321,3 +344,78 @@ class Burst(Generic[Node]):
             if level > 0:
                 result[node] = level
         return result
+
+
+class ChaseMatch:
+    """Best-of-`wins_needed` wrapper around a sequence of rounds -- built
+    for LED II's and Title's snake-chase Phases (2026-08-26 playtesting:
+    "restart until one snake scores 3"), scored as dots on each snake's
+    own starting side by the Phase itself, not this class.
+
+    A round can be a bare `ChasePair` (LED II) or a small per-round
+    wrapper of one (Title's own `_TitleChase`, since it also owns that
+    round's Tickers) -- this class only needs `.finished` and
+    `.winner_index` (0 or 1), so it doesn't care which. `round_factory()`
+    builds a fresh round from scratch (new spawn points, new ChasePair),
+    called once up front and again after each round is scored, unless a
+    side has already reached `wins_needed`."""
+
+    def __init__(self, round_factory: Callable[[], object], wins_needed: int = 3) -> None:
+        self.round_factory = round_factory
+        self.wins_needed = wins_needed
+        self.score = [0, 0]
+        self.round = round_factory()
+        self._scored = False
+
+    @property
+    def match_winner(self) -> int | None:
+        if self.score[0] >= self.wins_needed:
+            return 0
+        if self.score[1] >= self.wins_needed:
+            return 1
+        return None
+
+    @property
+    def finished(self) -> bool:
+        return self.match_winner is not None
+
+    def update(self) -> None:
+        """Call once per frame after advancing self.round's own state.
+        No-op until the round finishes; scores it exactly once, then
+        starts a fresh round unless the match itself is now over."""
+        if not self.round.finished or self._scored:
+            return
+        self.score[self.round.winner_index] += 1
+        self._scored = True
+        if not self.finished:
+            self.round = self.round_factory()
+            self._scored = False
+
+
+class Rocket:
+    """A straight-line projectile from `start` to `target` over
+    `duration` seconds -- a fireworks Phase's launch trail before the
+    `Burst` it's heading toward ignites (2026-08-26 playtesting:
+    fireworks "need to have the rocket portion ... flies to the centre
+    point, then the explosion happens"). Coordinate-system agnostic, like
+    the rest of this module: `start`/`target` are just (x, y) pairs in
+    whatever grid the caller's display uses."""
+
+    def __init__(self, start: tuple[float, float], target: tuple[float, float], duration: float) -> None:
+        self.start = start
+        self.target = target
+        self.duration = duration
+        self.elapsed = 0.0
+
+    def age(self, dt: float) -> None:
+        self.elapsed += dt
+
+    @property
+    def done(self) -> bool:
+        return self.elapsed >= self.duration
+
+    def position(self) -> tuple[int, int]:
+        t = min(1.0, self.elapsed / self.duration)
+        x = self.start[0] + (self.target[0] - self.start[0]) * t
+        y = self.start[1] + (self.target[1] - self.start[1]) * t
+        return (round(x), round(y))

@@ -1,7 +1,9 @@
 """Tests for the generic graph-walk primitives (framework/graph_walk.py):
 Snake and bfs_rings, extracted from LED's phases once LED II's phases
-needed the identical logic over a different (dot-grid) graph; and Burst,
-built directly here for LED II's fireworks-style RipplePhase.
+needed the identical logic over a different (dot-grid) graph; Burst, built
+directly here for LED II's fireworks-style RipplePhase; and ChaseMatch and
+Rocket (2026-08-26), the best-of-N match wrapper and fireworks launch
+trail built for LED II's and Title's snake-chase/fireworks phases.
 
 Uses a plain 3x3 grid graph as a stand-in for either real caller's graph
 shape, since none of Snake, bfs_rings, or Burst care what a node actually is.
@@ -11,7 +13,7 @@ from __future__ import annotations
 
 import random
 
-from retrodemos.framework.graph_walk import Burst, ChasePair, ChaseSnake, Snake, bfs_rings
+from retrodemos.framework.graph_walk import Burst, ChaseMatch, ChasePair, ChaseSnake, Rocket, Snake, bfs_rings
 
 
 def _grid_graph(width: int, height: int) -> dict[tuple[int, int], set[tuple[int, int]]]:
@@ -197,6 +199,83 @@ def test_chase_pair_safety_net_forces_a_winner_at_max_steps():
     for _ in range(10):
         pair.step()
     assert pair.resolved
+
+
+def test_chase_pair_winner_index_matches_which_side_won():
+    graph = _grid_graph(9, 9)
+    pair = _chase_pair(graph, chase_chance=1.0)
+    assert pair.winner_index is None
+    while not pair.resolved:
+        pair.step()
+    expected = 0 if pair.winner is pair.a else 1
+    assert pair.winner_index == expected
+
+
+def _make_round_factory(graph, seed):
+    counter = {"seed": seed}
+
+    def factory():
+        counter["seed"] += 1
+        return _chase_pair(graph, seed=counter["seed"], chase_chance=1.0, flash_cycles=1)
+
+    return factory
+
+
+def _run_round_to_finish(pair):
+    while not pair.resolved:
+        pair.step()
+    while not pair.finished:
+        pair.flash_tick()
+
+
+def test_chase_match_scores_a_round_and_starts_a_fresh_one():
+    graph = _grid_graph(9, 9)
+    match = ChaseMatch(_make_round_factory(graph, seed=0), wins_needed=3)
+    first_round = match.round
+    _run_round_to_finish(match.round)
+    match.update()
+    assert sum(match.score) == 1
+    assert match.round is not first_round  # a fresh round started
+    assert not match.round.resolved
+
+
+def test_chase_match_is_idempotent_once_a_round_is_scored():
+    graph = _grid_graph(9, 9)
+    match = ChaseMatch(_make_round_factory(graph, seed=0), wins_needed=3)
+    _run_round_to_finish(match.round)
+    match.update()
+    scored_after_first_call = match.score[:]
+    match.update()  # no-op: the new round hasn't finished yet
+    assert match.score == scored_after_first_call
+
+
+def test_chase_match_finishes_once_a_side_reaches_wins_needed():
+    graph = _grid_graph(9, 9)
+    match = ChaseMatch(_make_round_factory(graph, seed=0), wins_needed=3)
+    for _ in range(50):
+        if match.finished:
+            break
+        _run_round_to_finish(match.round)
+        match.update()
+    assert match.finished
+    assert match.match_winner in (0, 1)
+    assert match.score[match.match_winner] == 3
+
+
+def test_rocket_starts_at_start_and_ends_at_target():
+    rocket = Rocket(start=(0, 10), target=(10, 0), duration=1.0)
+    assert rocket.position() == (0, 10)
+    assert not rocket.done
+    rocket.age(1.0)
+    assert rocket.done
+    assert rocket.position() == (10, 0)
+
+
+def test_rocket_position_is_partway_along_the_line_mid_flight():
+    rocket = Rocket(start=(0, 0), target=(10, 0), duration=2.0)
+    rocket.age(1.0)
+    assert not rocket.done
+    assert rocket.position() == (5, 0)
 
 
 def test_bfs_rings_first_ring_is_just_the_start():
